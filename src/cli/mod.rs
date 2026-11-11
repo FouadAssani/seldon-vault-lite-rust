@@ -12,7 +12,7 @@
 //! embedding.
 
 use std::collections::BTreeSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -20,6 +20,9 @@ use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
 use crate::index::{Filters, Index, SearchHit, SearchMode, SearchRequest};
 use crate::json::{self, Number, Object, Value};
+use crate::media::preprocess::PreprocessOptions;
+use crate::media::{Image, jpeg, png};
+use crate::model::ImageEmbedder;
 use crate::model::prompt::Prompt;
 use crate::model::text::{TextEmbedder, TextModel};
 use crate::storage::model::{ChunkInput, Document, DocumentId, Metadata, Modality};
@@ -48,7 +51,7 @@ USAGE:
     r#" <COMMAND>
 
 COMMANDS:
-    embed      Embeds text or token ids and prints a JSON vector
+    embed      Embeds text, token ids, or an image and prints a JSON vector
     index      Ingests JSONL documents into the persistent store
     search     Runs hybrid, lexical, or exact vector search
     verify     Verifies a data directory without modifying it
@@ -58,7 +61,7 @@ COMMANDS:
 
 EMBED:
     embed [--model-dir <DIR>] [--prompt <NAME>] [--dim <N>]
-          [--text <TEXT> | --ids <ID,ID,...>] [TEXT...]
+          [--text <TEXT> | --ids <ID,ID,...> | --image <PATH>] [TEXT...]
 
     --model-dir   Model directory (default: .model-cache/<revision>)
     --prompt      SearchQuery, Document, Classification, Clustering,
@@ -66,9 +69,14 @@ EMBED:
                   QuestionAnswering (default: SearchQuery)
     --dim         Output dimension, from 1 to the model embedding dimension
                   (default: 768; MRL dimensions are 768, 512, 256, 128)
+    --vision-tokens  Visual token budget for images: 70, 140, 280, 560, or
+                  1120 (default: 280)
     --text        Text to embed; if omitted, positional TEXT is joined with
                   spaces, and if no text is given standard input is read
     --ids         Comma-separated token ids; bypasses the tokenizer
+    --image       PNG or JPEG image to embed; mutually exclusive with text
+                  and --ids. Image embeddings use the official preprocessing
+                  and vision tower, not a caption or file name.
 
 INDEX:
     index --data-dir <DIR> [--model-dir <DIR>] [--dim <N>] [--ids]
@@ -77,17 +85,24 @@ INDEX:
     --data-dir    Data directory holding the journal and writer lock
     --model-dir   Model directory (default: .model-cache/<revision>)
     --dim         Embedding dimension (default: 768)
+    --vision-tokens  Visual token budget for image documents: 70, 140, 280,
+                  560, or 1120 (default: 280)
     --ids         Diagnostic mode: JSONL lines carry an ids array used
                   instead of tokenizing text; text is still stored for BM25
 
-    Each JSONL line is an object with id, text, optional title, optional
-    source, and optional metadata object. Blank lines are ignored. Duplicate
-    ids and unknown fields are rejected before any write.
+    Each JSONL line is an object with id and exactly one of text or image,
+    plus optional title, source, and metadata object. Image lines are decoded
+    with the native PNG/JPEG decoders and embedded through the vision tower;
+    their chunk text is empty, so they participate in vector search but not
+    BM25. When source is omitted for an image, the image path becomes the
+    source. Blank lines are ignored. Duplicate ids and unknown fields are
+    rejected before any write.
 
 SEARCH:
     search --data-dir <DIR> [--model-dir <DIR>] [--dim <N>]
            [--mode hybrid|lexical|vector] [--limit <N>] [--offset <N>]
-           [--filter KEY=VALUE]... [--ids <ID,ID,...>] [QUERY...]
+           [--filter KEY=VALUE]... [--ids <ID,ID,...>] [--image <PATH>]
+           [QUERY...]
 
     --data-dir    Data directory holding the journal and writer lock
     --model-dir   Model directory (default: .model-cache/<revision>)
@@ -97,6 +112,10 @@ SEARCH:
     --offset      Number of ranked hits to skip (default: 0)
     --filter      Exact metadata equality filter; repeatable
     --ids         Diagnostic query ids for vector or hybrid mode
+    --image       PNG or JPEG image query; requires vector mode and cannot be
+                  combined with query text or --ids
+    --vision-tokens  Visual token budget for an image query: 70, 140, 280,
+                  560, or 1120 (default: 280)
 
     QUERY is joined with spaces; with no query, standard input is read with
     a 1 MiB cap. Lexical mode does not load the model.
@@ -159,6 +178,8 @@ pub struct EmbedArgs {
     pub prompt: Prompt,
     /// Requested Matryoshka dimension.
     pub dimension: usize,
+    /// Visual token budget for image input.
+    pub vision_budget: usize,
     /// Input source.
     pub input: EmbedInput,
 }
@@ -170,6 +191,8 @@ pub enum EmbedInput {
     Text(String),
     /// Token ids used directly, without the tokenizer or prompt prefix.
     Ids(Vec<u32>),
+    /// PNG or JPEG image read from the given path.
+    Image(PathBuf),
     /// Text read from standard input.
     Stdin,
 }
@@ -183,6 +206,8 @@ pub struct IndexArgs {
     pub model_dir: PathBuf,
     /// Embedding dimension.
     pub dimension: usize,
+    /// Visual token budget for image documents.
+    pub vision_budget: usize,
     /// JSONL file, or - for standard input.
     pub input: PathBuf,
     /// Diagnostic mode that uses an ids array instead of the tokenizer.
@@ -208,6 +233,10 @@ pub struct SearchArgs {
     pub filters: Filters,
     /// Query text or standard input.
     pub input: SearchInput,
+    /// Optional image query for vector mode.
+    pub image: Option<PathBuf>,
+    /// Visual token budget for an image query.
+    pub vision_budget: usize,
     /// Diagnostic query token ids for vector or hybrid mode.
     pub ids: Option<Vec<u32>>,
 }
@@ -311,6 +340,14 @@ fn parse_dimension(value: &str) -> Result<usize> {
     Ok(dimension)
 }
 
+fn parse_vision_budget(value: &str) -> Result<usize> {
+    let budget = value
+        .parse::<usize>()
+        .map_err(|_| Error::usage(format!("invalid vision token budget {value}")))?;
+    PreprocessOptions::new(budget)?;
+    Ok(budget)
+}
+
 fn parse_positive_usize(value: &str, name: &str) -> Result<usize> {
     let parsed = value
         .parse::<usize>()
@@ -325,8 +362,10 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
     let mut model_dir = default_model_dir();
     let mut prompt = Prompt::SearchQuery;
     let mut dimension = 768usize;
+    let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
     let mut ids = None;
     let mut explicit_text = None;
+    let mut image = None;
     let mut text_parts = Vec::new();
     let mut index = 0;
 
@@ -356,12 +395,23 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
                 }
                 ids = Some(parse_ids(value)?);
             }
+            "--vision-tokens" => {
+                let value = next_value(&args, &mut index, "--vision-tokens")?;
+                vision_budget = parse_vision_budget(value)?;
+            }
             "--text" => {
                 let value = next_value(&args, &mut index, "--text")?;
                 if explicit_text.is_some() {
                     return Err(Error::usage("--text was provided more than once"));
                 }
                 explicit_text = Some(value.to_owned());
+            }
+            "--image" => {
+                let value = next_value(&args, &mut index, "--image")?;
+                if image.is_some() {
+                    return Err(Error::usage("--image was provided more than once"));
+                }
+                image = Some(PathBuf::from(value));
             }
             "-h" | "--help" => return Ok(Command::Help),
             other if other.starts_with('-') => {
@@ -380,8 +430,15 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
             "--text cannot be combined with positional text",
         ));
     }
+    if image.is_some() && (ids.is_some() || explicit_text.is_some() || !text_parts.is_empty()) {
+        return Err(Error::usage(
+            "--image cannot be combined with text or token ids",
+        ));
+    }
 
-    let input = if let Some(ids) = ids {
+    let input = if let Some(path) = image {
+        EmbedInput::Image(path)
+    } else if let Some(ids) = ids {
         EmbedInput::Ids(ids)
     } else if let Some(text) = explicit_text {
         EmbedInput::Text(text)
@@ -395,6 +452,7 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
         model_dir,
         prompt,
         dimension,
+        vision_budget,
         input,
     }))
 }
@@ -426,6 +484,7 @@ fn parse_index(args: Vec<String>) -> Result<Command> {
     let mut data_dir = None;
     let mut model_dir = default_model_dir();
     let mut dimension = 768usize;
+    let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
     let mut input = None;
     let mut ids_mode = false;
     let mut index = 0;
@@ -446,6 +505,10 @@ fn parse_index(args: Vec<String>) -> Result<Command> {
                 dimension = parse_dimension(value)?;
             }
             "--ids" => ids_mode = true,
+            "--vision-tokens" => {
+                let value = next_value(&args, &mut index, "--vision-tokens")?;
+                vision_budget = parse_vision_budget(value)?;
+            }
             "-h" | "--help" => return Ok(Command::Help),
             "-" => {
                 if input.is_some() {
@@ -472,6 +535,7 @@ fn parse_index(args: Vec<String>) -> Result<Command> {
         data_dir,
         model_dir,
         dimension,
+        vision_budget,
         input,
         ids_mode,
     }))
@@ -486,6 +550,8 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
     let mut offset = 0usize;
     let mut filters = Filters::new();
     let mut ids = None;
+    let mut image = None;
+    let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
     let mut query_parts = Vec::new();
     let mut index = 0;
 
@@ -533,6 +599,17 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
                 }
                 ids = Some(parse_ids(value)?);
             }
+            "--image" => {
+                let value = next_value(&args, &mut index, "--image")?;
+                if image.is_some() {
+                    return Err(Error::usage("--image was provided more than once"));
+                }
+                image = Some(PathBuf::from(value));
+            }
+            "--vision-tokens" => {
+                let value = next_value(&args, &mut index, "--vision-tokens")?;
+                vision_budget = parse_vision_budget(value)?;
+            }
             "-h" | "--help" => return Ok(Command::Help),
             other if other.starts_with('-') => {
                 return Err(Error::usage(format!("unknown option {other}")));
@@ -547,6 +624,16 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         return Err(Error::usage(
             "--ids cannot be used with lexical search mode",
         ));
+    }
+    if image.is_some() {
+        if ids.is_some() || !query_parts.is_empty() {
+            return Err(Error::usage(
+                "--image cannot be combined with query text or --ids",
+            ));
+        }
+        if mode != SearchMode::Vector {
+            return Err(Error::usage("--image requires vector search mode"));
+        }
     }
     let input = if query_parts.is_empty() {
         SearchInput::Stdin
@@ -563,6 +650,8 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         offset,
         filters,
         input,
+        image,
+        vision_budget,
         ids,
     }))
 }
@@ -661,6 +750,17 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
             let embedding = embedder.embed(&text, args.prompt, args.dimension)?;
             write_vector(&embedding, stdout)?;
         }
+        EmbedInput::Image(path) => {
+            let image = decode_image(&path)?;
+            let embedder = ImageEmbedder::load(&args.model_dir)?;
+            validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+            let embedding = embedder.embed(
+                &image,
+                args.dimension,
+                PreprocessOptions::new(args.vision_budget)?,
+            )?;
+            write_vector(&embedding, stdout)?;
+        }
         EmbedInput::Stdin => {
             let text = read_stdin_bounded(MAX_STDIN_BYTES)?;
             let embedder = TextEmbedder::load(&args.model_dir)?;
@@ -670,6 +770,20 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn decode_image(path: &Path) -> Result<Image> {
+    let extension = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(|value| value.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("png") => png::decode_file(path),
+        Some("jpg" | "jpeg") => jpeg::decode_file(path),
+        _ => Err(Error::usage(
+            "image input must have a .png, .jpg, or .jpeg extension",
+        )),
+    }
 }
 
 fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
@@ -689,6 +803,29 @@ fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
                 .as_ref()
                 .ok_or_else(|| Error::internal("ids mode document is missing its ids array"))?;
             let embedding = model.embed_ids(ids, args.dimension)?;
+            let chunk_ids = store.put_document(
+                pending.document,
+                vec![ChunkInput::new(pending.text, embedding)],
+            )?;
+            ingested += 1;
+            chunks += chunk_ids.len();
+        }
+        write_index_summary(stdout, &args.data_dir, &store, ingested, chunks)?;
+    } else if pending.iter().any(|document| document.image.is_some()) {
+        let embedder = ImageEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        let mut store = Store::open(&args.data_dir)?;
+        for pending in pending {
+            let embedding = if let Some(path) = &pending.image {
+                let image = decode_image(path)?;
+                embedder.embed(
+                    &image,
+                    args.dimension,
+                    PreprocessOptions::new(args.vision_budget)?,
+                )?
+            } else {
+                embedder.embed_text(&pending.text, Prompt::Document, args.dimension)?
+            };
             let chunk_ids = store.put_document(
                 pending.document,
                 vec![ChunkInput::new(pending.text, embedding)],
@@ -757,6 +894,28 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
         return Err(Error::usage(
             "--ids cannot be used with lexical search mode",
         ));
+    }
+    if let Some(path) = &args.image {
+        if args.mode != SearchMode::Vector {
+            return Err(Error::usage("--image requires vector search mode"));
+        }
+        let image = decode_image(path)?;
+        let embedder = ImageEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        let embedding = embedder.embed(
+            &image,
+            args.dimension,
+            PreprocessOptions::new(args.vision_budget)?,
+        )?;
+        let store = ReadOnlyStore::open(&args.data_dir)?;
+        let index = Index::build_read_only(&store)?;
+        let mut request = SearchRequest::new(SearchMode::Vector, args.limit);
+        request.offset = args.offset;
+        request.filters = args.filters;
+        request.text = None;
+        request.embedding = Some(&embedding);
+        let hits = index.search(&request)?;
+        return write_hits(stdout, &hits);
     }
     let query_text = match args.input {
         SearchInput::Text(text) => text,
@@ -965,9 +1124,11 @@ fn read_index_input(path: &Path) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| Error::corrupt("index input is not valid UTF-8"))
 }
 
+#[derive(Debug)]
 struct PendingDocument {
     document: Document,
     text: String,
+    image: Option<PathBuf>,
     ids: Option<Vec<u32>>,
 }
 
@@ -1016,14 +1177,57 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
                 document_id
             )));
         }
-        let text = required_string(object, "text", line_index)?.to_owned();
-        let mut document = Document::new(document_id, Modality::Text);
+
+        let text = match object.get("text") {
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| {
+                        Error::usage(format!(
+                            "line {} field text must be a string",
+                            line_index + 1
+                        ))
+                    })?
+                    .to_owned(),
+            ),
+            None => None,
+        };
+        let image = optional_string_field(object, "image", line_index)?.map(PathBuf::from);
+        if text.is_some() == image.is_some() {
+            return Err(Error::usage(format!(
+                "line {} must have exactly one of text or image",
+                line_index + 1
+            )));
+        }
+        if ids_mode && image.is_some() {
+            return Err(Error::usage(format!(
+                "line {} cannot combine --ids with an image",
+                line_index + 1
+            )));
+        }
+
+        let (mut document, text) = match (&image, text) {
+            (Some(_), None) => (Document::new(document_id, Modality::Image), String::new()),
+            (None, Some(text)) => (Document::new(document_id, Modality::Text), text),
+            _ => {
+                return Err(Error::internal(
+                    "index parser accepted an invalid text/image combination",
+                ));
+            }
+        };
 
         if let Some(title) = optional_string_field(object, "title", line_index)? {
             document = document.with_title(title)?;
         }
-        if let Some(source) = optional_string_field(object, "source", line_index)? {
+        let source = optional_string_field(object, "source", line_index)?;
+        if let Some(source) = source {
             document = document.with_source(source)?;
+        } else if let Some(image) = &image {
+            document = document.with_source(
+                image
+                    .to_str()
+                    .ok_or_else(|| Error::usage("image path is not valid UTF-8"))?,
+            )?;
         }
         let metadata = parse_metadata(object.get("metadata"), line_index)?;
         document = document.with_metadata(metadata);
@@ -1037,6 +1241,7 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
         documents.push(PendingDocument {
             document,
             text,
+            image,
             ids,
         });
     }
@@ -1048,7 +1253,10 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
 }
 
 fn allowed_index_field(key: &str, ids_mode: bool) -> bool {
-    matches!(key, "id" | "text" | "title" | "source" | "metadata") || (ids_mode && key == "ids")
+    matches!(
+        key,
+        "id" | "text" | "image" | "title" | "source" | "metadata"
+    ) || (ids_mode && key == "ids")
 }
 
 fn required_string<'a>(object: &'a Object, key: &str, line_index: usize) -> Result<&'a str> {
@@ -1269,6 +1477,10 @@ mod tests {
         assert_eq!(args.model_dir, default_model_dir());
         assert_eq!(args.prompt, Prompt::SearchQuery);
         assert_eq!(args.dimension, 768);
+        assert_eq!(
+            args.vision_budget,
+            crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS
+        );
         assert_eq!(args.input, EmbedInput::Ids(vec![1, 5, 7, 9, 2]));
     }
 
@@ -1295,6 +1507,66 @@ mod tests {
 
         let stdin = parse_embed_args(&["embed"]);
         assert_eq!(stdin.input, EmbedInput::Stdin);
+
+        let image = parse_embed_args(&[
+            "embed",
+            "--image",
+            "fixtures/media/rgb_2x2.png",
+            "--dim",
+            "128",
+            "--vision-tokens",
+            "70",
+        ]);
+        assert_eq!(
+            image.input,
+            EmbedInput::Image(PathBuf::from("fixtures/media/rgb_2x2.png"))
+        );
+        assert_eq!(image.dimension, 128);
+        assert_eq!(image.vision_budget, 70);
+    }
+
+    #[test]
+    fn rejects_image_combined_with_text_or_ids() {
+        for args in [
+            &["embed", "--image", "image.png", "--text", "hello"][..],
+            &["embed", "--image", "image.png", "hello"],
+            &["embed", "--image", "image.png", "--ids", "1,2"],
+        ] {
+            let error = parse_args(args).expect_err("image input cannot be combined");
+            assert!(matches!(error, Error::Usage(_)), "{error}");
+            assert!(error.to_string().contains("--image"), "{error}");
+        }
+    }
+
+    #[test]
+    fn parses_image_documents_and_defaults_the_source() {
+        let input = "{\"id\":\"img-1\",\"image\":\"fixtures/media/quadrants_16x16.png\",\"title\":\"Quadrants\"}\n";
+        let documents = parse_index_documents(input, false).expect("image document");
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].document.modality(), Modality::Image);
+        assert_eq!(
+            documents[0].document.source(),
+            Some("fixtures/media/quadrants_16x16.png")
+        );
+        assert_eq!(documents[0].document.title(), Some("Quadrants"));
+        assert_eq!(documents[0].text, "");
+        assert!(documents[0].image.is_some());
+        assert!(documents[0].ids.is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_image_documents() {
+        for input in [
+            "{\"id\":\"img\",\"text\":\"hello\",\"image\":\"x.png\"}",
+            "{\"id\":\"img\"}",
+        ] {
+            let error =
+                parse_index_documents(input, false).expect_err("invalid image document must fail");
+            assert!(matches!(error, Error::Usage(_)), "{error}");
+        }
+        let error = parse_index_documents("{\"id\":\"img\",\"image\":\"x.png\"}", true)
+            .expect_err("ids mode cannot combine with an image");
+        assert!(matches!(error, Error::Usage(_)), "{error}");
     }
 
     #[test]
@@ -1321,6 +1593,10 @@ mod tests {
         assert_eq!(args.data_dir, PathBuf::from("data"));
         assert_eq!(args.model_dir, default_model_dir());
         assert_eq!(args.dimension, 768);
+        assert_eq!(
+            args.vision_budget,
+            crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS
+        );
         assert_eq!(args.input, PathBuf::from("docs.jsonl"));
         assert!(!args.ids_mode);
 
@@ -1332,11 +1608,14 @@ mod tests {
             "fixtures/model/tiny_text",
             "--dim",
             "8",
+            "--vision-tokens",
+            "70",
             "--ids",
             "-",
         ]);
         assert_eq!(args.model_dir, PathBuf::from("fixtures/model/tiny_text"));
         assert_eq!(args.dimension, 8);
+        assert_eq!(args.vision_budget, 70);
         assert_eq!(args.input, PathBuf::from("-"));
         assert!(args.ids_mode);
     }
@@ -1347,6 +1626,14 @@ mod tests {
             &["index", "docs.jsonl"][..],
             &["index", "--data-dir", "data"],
             &["index", "--data-dir", "data", "a", "b"],
+            &[
+                "index",
+                "--data-dir",
+                "data",
+                "--vision-tokens",
+                "100",
+                "docs.jsonl",
+            ],
             &["index", "--data-dir", "data", "--dim", "0", "docs.jsonl"],
             &["index", "--data-dir", "data", "--unknown", "docs.jsonl"],
         ] {
@@ -1386,6 +1673,11 @@ mod tests {
             ]
         );
         assert_eq!(args.input, SearchInput::Text("rust language".to_owned()));
+        assert_eq!(args.image, None);
+        assert_eq!(
+            args.vision_budget,
+            crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS
+        );
         assert_eq!(args.ids, None);
 
         let args = parse_search_args(&[
@@ -1399,7 +1691,26 @@ mod tests {
         ]);
         assert_eq!(args.mode, SearchMode::Vector);
         assert_eq!(args.input, SearchInput::Stdin);
+        assert_eq!(args.image, None);
         assert_eq!(args.ids, Some(vec![1, 2, 3]));
+
+        let args = parse_search_args(&[
+            "search",
+            "--data-dir",
+            "data",
+            "--mode",
+            "vector",
+            "--image",
+            "fixtures/media/quadrants_16x16.png",
+            "--vision-tokens",
+            "70",
+        ]);
+        assert_eq!(
+            args.image,
+            Some(PathBuf::from("fixtures/media/quadrants_16x16.png"))
+        );
+        assert_eq!(args.vision_budget, 70);
+        assert_eq!(args.input, SearchInput::Stdin);
     }
 
     #[test]
@@ -1422,6 +1733,56 @@ mod tests {
                 "query",
             ],
             &["search", "--data-dir", "data", "--unknown", "query"],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "query",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "--ids",
+                "1,2",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "lexical",
+                "--image",
+                "image.png",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "hybrid",
+                "--image",
+                "image.png",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "--vision-tokens",
+                "100",
+            ],
         ] {
             let error = parse_args(args).expect_err("invalid search arguments must fail");
             assert!(matches!(error, Error::Usage(_)), "args {args:?}: {error}");
@@ -1489,6 +1850,7 @@ mod tests {
                 model_dir: model_dir.to_path_buf(),
                 prompt: Prompt::SearchQuery,
                 dimension: 8,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 input: EmbedInput::Ids(vec![1, 5, 7, 9, 2]),
             }),
             &mut output,
@@ -1534,6 +1896,7 @@ mod tests {
                 data_dir: data_dir.clone(),
                 model_dir: PathBuf::from("fixtures/model/tiny_text"),
                 dimension: 8,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 input: jsonl,
                 ids_mode: true,
             }),
@@ -1575,6 +1938,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),
             &mut output,
@@ -1610,6 +1975,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text(String::new()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
             &mut output,
@@ -1630,6 +1997,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
             &mut output,
@@ -1762,6 +2131,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),
             &mut output,
@@ -1787,6 +2158,7 @@ mod tests {
                 data_dir: data_dir.clone(),
                 model_dir: PathBuf::from("fixtures/model/tiny_text"),
                 dimension: 8,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 input: jsonl,
                 ids_mode: true,
             }),

@@ -136,6 +136,43 @@ impl TextModel {
     /// a limit error for a sequence above the documented context, and an
     /// internal error for a non-finite numerical result.
     pub fn forward(&self, input_ids: &[u32], capture_hidden: bool) -> Result<ForwardOutput> {
+        self.forward_impl(input_ids, None, capture_hidden)
+    }
+
+    /// Runs one forward pass with vision soft tokens replacing a token range.
+    ///
+    /// The caller supplies token ids whose selected positions are image
+    /// placeholders. The hidden state at those positions is built from the
+    /// padding token embedding, then overwritten with the projected vision
+    /// features before per-layer embeddings are computed, matching the
+    /// official multimodal flow.
+    ///
+    /// # Errors
+    ///
+    /// Returns a corruption error for an invalid token, range, or feature
+    /// length, a limit error for a sequence above the documented context, and
+    /// an internal error for a non-finite numerical result.
+    pub fn forward_with_features(
+        &self,
+        input_ids: &[u32],
+        features: &[f32],
+        feature_start: usize,
+        feature_count: usize,
+        capture_hidden: bool,
+    ) -> Result<ForwardOutput> {
+        self.forward_impl(
+            input_ids,
+            Some((features, feature_start, feature_count)),
+            capture_hidden,
+        )
+    }
+
+    fn forward_impl(
+        &self,
+        input_ids: &[u32],
+        features: Option<(&[f32], usize, usize)>,
+        capture_hidden: bool,
+    ) -> Result<ForwardOutput> {
         let sequence = input_ids.len();
         if sequence == 0 {
             return Err(Error::corrupt("cannot embed an empty token sequence"));
@@ -171,6 +208,59 @@ impl TextModel {
             let destination = &mut hidden[row * hidden_size..(row + 1) * hidden_size];
             for (target, value) in destination.iter_mut().zip(source) {
                 *target = *value * self.config.embedding_scale();
+            }
+        }
+
+        if let Some((features, start, count)) = features {
+            if count == 0 {
+                return Err(Error::corrupt(
+                    "vision feature replacement requires at least one token",
+                ));
+            }
+            let end = start
+                .checked_add(count)
+                .ok_or_else(|| Error::limit_exceeded("vision feature range overflow"))?;
+            if end > sequence {
+                return Err(Error::corrupt(format!(
+                    "vision feature range {start}..{end} is outside the {sequence}-token sequence"
+                )));
+            }
+            let expected = count
+                .checked_mul(hidden_size)
+                .ok_or_else(|| Error::limit_exceeded("vision feature length overflow"))?;
+            if features.len() != expected {
+                return Err(Error::corrupt(format!(
+                    "vision features have {} values, expected {expected}",
+                    features.len()
+                )));
+            }
+            let pad = self
+                .config
+                .pad_token_id()
+                .ok_or_else(|| Error::unsupported("model has no padding token for images"))?
+                as usize;
+            if pad >= self.config.vocab_size() {
+                return Err(Error::corrupt(format!(
+                    "padding token id {pad} is outside the vocabulary"
+                )));
+            }
+            let pad_embedding =
+                &self.weights.embed_tokens[pad * hidden_size..(pad + 1) * hidden_size];
+            for row in start..end {
+                let destination = &mut hidden[row * hidden_size..(row + 1) * hidden_size];
+                for (target, value) in destination.iter_mut().zip(pad_embedding) {
+                    *target = *value * self.config.embedding_scale();
+                }
+            }
+            for (offset, row) in (start..end).enumerate() {
+                let source = &features[offset * hidden_size..(offset + 1) * hidden_size];
+                let destination = &mut hidden[row * hidden_size..(row + 1) * hidden_size];
+                destination.copy_from_slice(source);
+            }
+            if hidden.iter().any(|value| !value.is_finite()) {
+                return Err(Error::internal(
+                    "vision features contain a non-finite activation",
+                ));
             }
         }
 

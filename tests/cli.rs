@@ -158,6 +158,195 @@ fn embed_rejects_an_out_of_vocabulary_id() {
 fn embed_help_is_available() {
     let output = run(&["embed", "--help"]);
     assert!(output.status.success());
-    assert!(stdout(&output).contains("USAGE:"));
+    let text = stdout(&output);
+    assert!(text.contains("USAGE:"));
+    assert!(text.contains("--image"));
     assert!(output.stderr.is_empty());
+}
+
+#[test]
+#[ignore = "loads the full multimodal model and runs the scalar vision tower"]
+fn indexes_an_image_and_finds_it_with_a_text_query() {
+    use std::fs;
+
+    let unique = format!(
+        "seldon-image-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(unique);
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create temp dir");
+    let jsonl = dir.join("images.jsonl");
+    fs::write(
+        &jsonl,
+        "{\"id\":\"img-1\",\"image\":\"fixtures/media/quadrants_16x16.png\",\"title\":\"Quadrants\"}\n",
+    )
+    .expect("write JSONL");
+    let data_dir = dir.join("data");
+
+    let output = run(&[
+        "index",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--vision-tokens",
+        "70",
+        jsonl.to_str().expect("UTF-8 path"),
+    ]);
+    assert!(output.status.success(), "index stderr: {}", stderr(&output));
+    let summary =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("index summary must be JSON");
+    assert_eq!(
+        summary
+            .get("documents")
+            .and_then(|value| value.as_number())
+            .and_then(|number| number.as_u64()),
+        Some(1)
+    );
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--mode",
+        "vector",
+        "--dim",
+        "768",
+        "a colorful four-quadrant test pattern",
+    ]);
+    assert!(
+        output.status.success(),
+        "search stderr: {}",
+        stderr(&output)
+    );
+    let result =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("search result must be JSON");
+    let hits = result.as_array().expect("search output is a hits array");
+    assert_eq!(hits.len(), 1, "the image corpus has one document");
+    assert_eq!(
+        hits[0].get("modality").and_then(|value| value.as_str()),
+        Some("image")
+    );
+    assert_eq!(
+        hits[0].get("source").and_then(|value| value.as_str()),
+        Some("fixtures/media/quadrants_16x16.png")
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "loads the full multimodal model and embeds two images with the scalar vision tower"]
+fn text_and_image_queries_rank_image_documents() {
+    use std::fs;
+
+    let unique = format!(
+        "seldon-image-rank-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(unique);
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create temp dir");
+    let jsonl = dir.join("images.jsonl");
+    fs::write(
+        &jsonl,
+        "{\"id\":\"img-quadrants\",\"image\":\"fixtures/media/quadrants_16x16.png\"}\n         {\"id\":\"img-gray\",\"image\":\"fixtures/media/gray_2x2.png\"}\n",
+    )
+    .expect("write JSONL");
+    let data_dir = dir.join("data");
+
+    let output = run(&[
+        "index",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--vision-tokens",
+        "70",
+        jsonl.to_str().expect("UTF-8 path"),
+    ]);
+    assert!(output.status.success(), "index stderr: {}", stderr(&output));
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--mode",
+        "vector",
+        "--dim",
+        "768",
+        "a colorful four-quadrant test pattern",
+    ]);
+    assert!(
+        output.status.success(),
+        "search stderr: {}",
+        stderr(&output)
+    );
+    let result =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("search result must be JSON");
+    let hits = result.as_array().expect("search output is a hits array");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].get("document_id").and_then(|value| value.as_str()),
+        Some("img-quadrants"),
+        "the colorful quadrant image must rank first"
+    );
+    assert_eq!(
+        hits[1].get("document_id").and_then(|value| value.as_str()),
+        Some("img-gray")
+    );
+    assert_eq!(
+        hits[0].get("modality").and_then(|value| value.as_str()),
+        Some("image")
+    );
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--mode",
+        "vector",
+        "--dim",
+        "768",
+        "--vision-tokens",
+        "70",
+        "--image",
+        "fixtures/media/quadrants_16x16.png",
+    ]);
+    assert!(
+        output.status.success(),
+        "image search stderr: {}",
+        stderr(&output)
+    );
+    let result =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("image search must be JSON");
+    let hits = result
+        .as_array()
+        .expect("image search output is a hits array");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].get("document_id").and_then(|value| value.as_str()),
+        Some("img-quadrants"),
+        "the identical image must rank first"
+    );
+    assert_eq!(
+        hits[1].get("document_id").and_then(|value| value.as_str()),
+        Some("img-gray")
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn embed_rejects_an_unknown_image_extension() {
+    let output = run(&["embed", "--image", "fixtures/media/README.md"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let text = stderr(&output);
+    assert!(text.contains("extension"), "stderr: {text}");
 }

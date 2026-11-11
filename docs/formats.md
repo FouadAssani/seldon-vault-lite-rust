@@ -295,8 +295,62 @@ SHA-256, sampling, and expected comparisons are recorded in
 [fixtures/media/README.md](../fixtures/media/README.md).
 
 The decoder lives in src/media/jpeg.rs; the shared image type lives in
-src/media/image.rs. Official image preprocessing, the vision encoder, image
-storage, and cross-modal search are not implemented yet.
+src/media/image.rs.
+
+## Image preprocessing
+
+Milestone M4 adds the official EmbeddingGemma 2 image preprocessing in
+src/media/preprocess.rs. It accepts the shared decoded-image type and returns
+padded 16x16 patches plus (x, y) grid positions for the vision tower.
+
+Pipeline:
+
+1. Convert to RGB. Grayscale is replicated across three channels. RGBA is
+   composited over white with the float tensor path and rounded half to even.
+2. Compute the official aspect-ratio preserving target size: the largest size
+   that fits the patch budget and whose sides are multiples of 48.
+3. Resize with antialiased bicubic interpolation. The implementation follows
+   the torchvision uint8 path: separable horizontal then vertical passes, Keys
+   cubic convolution with a = -0.5, per-output normalized weights, 16-bit
+   fixed-point quantization, and round-half-up integer accumulation. It is
+   bit-exact with the reference on the committed fixtures.
+4. Rescale bytes to [0, 1] by 1/255.
+5. Emit patches in pixel-major, channel-last order: for each of the 16x16
+   pixels, red, green, and blue.
+6. Emit (x, y) positions and pad both the patch tensor and positions to the
+   patch budget. Padding patches are zero and their positions are (-1, -1).
+
+### Caps
+
+| Limit | Value |
+|---|---|
+| Input side | 16,384 |
+| Input pixels | 16,777,216 |
+| Visual token budgets | 70, 140, 280, 560, 1,120 |
+| Default soft tokens | 280 |
+| Patch budget | 10,080 |
+| Resize taps | 8,192 |
+| Resize weights | 1,048,576 |
+| Padded patch values | 7,741,440 |
+
+The resized size, patch grid, patch count, and soft-token count are checked
+before allocation. The resized sides are always divisible by 48, so the 3x3
+pooling grid produces an integral number of soft tokens.
+
+### Fixtures
+
+fixtures/media/preprocess_golden.json records nine cases with source image,
+dimensions, budget, target size, patch grid, valid patches, soft tokens,
+SHA-256 of the resized bytes, padded patch values, and positions, plus selected
+first and last patch values. The cases cover grayscale, RGB, RGBA, gradients,
+quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2 aspect ratios.
+Provenance and fingerprints are recorded in fixtures/media/README.md. The
+generator is scripts/generate_image_goldens.py and is laboratory-only.
+
+Image documents are stored with modality image and indexed from the CLI;
+text-to-image and image-to-image vector search are implemented and covered by
+reference ranking tests. Broader ranking quality and vision performance remain
+future work. See ADR 0009.
 
 ## Storage journal
 
