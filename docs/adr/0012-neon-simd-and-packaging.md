@@ -84,9 +84,9 @@ mean pooling. The official text, image, and audio parity tests keep their
 existing `1e-4` absolute/relative and `0.9999` cosine thresholds; no threshold
 was loosened.
 
-### 5. Packaging design (in progress)
+### 5. Packaging design (container and packer implemented)
 
-The packaging step will use a versioned, bounded container instead of a bare
+The packaging step uses a versioned, bounded container instead of a bare
 directory:
 
 - magic `SVLMDL01`, version 1;
@@ -100,6 +100,13 @@ directory:
 - a packer written in Rust `std` that validates the frozen manifest hashes
   before writing, and a reader that validates structure, CRC, catalog digest,
   and section hashes.
+
+`src/bundle` implements the format, parser, in-memory builder, and streaming
+writer. `tools/model-packer` implements `pack`, `verify`, and `list`. The
+packer was run on the frozen revision: it produced 9 sections and
+1,525,784,026 bytes, and the `verify` command re-parsed the file, checked the
+catalog digest, and checked every section SHA-256. The bundle lives in the
+ignored model cache; weights are never committed.
 
 The final binary will embed the container with `include_bytes!` (or an
 equivalent Rust mechanism) and load model files from the embedded bytes, with
@@ -136,8 +143,9 @@ binary. It uses only `std` and first-party code.
 - The measured M7 text p50 is 159 ms, down from 1.485 s; concurrent throughput
   is 24.47 requests/s, up from 2.43 requests/s. The frozen text, image, and
   audio parity suites pass.
-- Packaging is not complete yet. The container format, packer, embedded
-  loading path, and Mach-O size/startup measurements remain open.
+- The container format and packer are implemented and a real frozen bundle was
+  verified. Embedded loading, Mach-O size/startup measurements, and the final
+  distribution checks remain open.
 - No third-party crate, FFI, or `unsafe` outside the NEON intrinsics is
   introduced.
 
@@ -151,6 +159,8 @@ binary. It uses only `std` and first-party code.
 - `cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture`
 - `cargo test --release --lib neon_microbenchmark -- --ignored --nocapture`
 - `cargo build --release --target aarch64-apple-darwin`
+- `cargo build --manifest-path tools/model-packer/Cargo.toml --release`
+- `model-packer pack` on the frozen revision, followed by `model-packer verify`
 - `cargo tree --edges normal,build,dev` shows only the root crate.
 - `otool -L` shows only `libSystem`; `vtool -show-build` reports `minos 11.0`.
 

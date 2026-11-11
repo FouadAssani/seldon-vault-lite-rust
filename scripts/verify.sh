@@ -29,6 +29,15 @@ else
     echo "skipping: .model-cache/$REV/model.safetensors is not present"
 fi
 
+echo "--- model packer ---"
+cargo build --manifest-path tools/model-packer/Cargo.toml --release
+packer="tools/model-packer/target/aarch64-apple-darwin/release/model-packer"
+if [ -f ".model-cache/$REV/model.svlm" ]; then
+    "$packer" verify ".model-cache/$REV/model.svlm"
+else
+    echo "skipping: .model-cache/$REV/model.svlm is not present"
+fi
+
 echo "--- Cargo graph (must be reduced to the root crate) ---"
 cargo_tree="$(cargo tree --edges normal,build,dev)"
 printf '%s\n' "$cargo_tree"

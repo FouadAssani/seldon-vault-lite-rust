@@ -6,15 +6,18 @@ a development tool; it is not part of the delivered runtime binary.
 
 ## Status
 
-M7 is in progress. The NEON execution path is implemented and tested. The
-container format, packer, embedded loading path, and Mach-O size/startup
-measurements are the remaining M7 packaging work. This directory does not yet
-contain a working packer; creating a stub would give a false impression of
-functionality.
+The container format (`src/bundle`), the streaming writer, and the packer
+commands are implemented. The packer was run on the frozen revision and
+produced 9 sections and 1,525,784,026 bytes; `verify` re-parsed the file,
+checked the header CRC-32 and catalog digest, and checked every section
+SHA-256. Embedded loading and the Mach-O size/startup measurements remain in
+progress.
 
 ## Constraints
 
-- Rust `std` only, no third-party crates.
+- Rust `std` only, no third-party crates. The only dependency is the
+  first-party `seldon-vault-lite` library, used for the bundle format, SHA-256,
+  and strict JSON.
 - No external process, no FFI.
 - The container carries a magic, a version, a bounded header, a sorted section
   table, per-section SHA-256, a header CRC-32, a catalog digest, and explicit
@@ -26,13 +29,26 @@ functionality.
   equivalent Rust mechanism) and loads model files from the embedded bytes.
   Only user data, logs, and snapshots remain external files.
 
-## Planned interface
+## Interface
+
+    cargo build --manifest-path tools/model-packer/Cargo.toml --release
 
     model-packer pack --manifest fixtures/model/manifest.json \
         --model-dir .model-cache/<revision> --output <path>
     model-packer verify <path>
+    model-packer list <path>
+    model-packer version
 
 The `pack` command reads the manifest, checks each selected file's size and
-SHA-256, writes the container, and verifies it before reporting success. The
-`verify` command parses the container, checks the header CRC-32, the catalog
-digest, every section SHA-256, and the section path/offset/length invariants.
+SHA-256, writes the container to a temporary file, calls `sync_all`, renames it
+atomically, then reads it back and verifies the structure and every section
+digest. The `verify` command parses the container, checks the header CRC-32,
+the catalog digest, every section SHA-256, and the section path/offset/length
+invariants. The `list` command prints the role, length, and path of every
+section.
+
+The frozen revision is
+`f9972ac22e696a105c482202646979e33e4b5a1e`. The packer includes the required
+`config.json`, `model.safetensors`, and `tokenizer.json`, plus the official
+prompt, processor, pooling, normalization, and tokenizer model files when the
+manifest lists them.

@@ -1,12 +1,13 @@
 # Formats and binary primitives
 
-This document describes the formats implemented through milestone M5 (audio
-path added) and the validation rules that protect the product from hostile
-input. ADR 0002 is the binary format decision record, ADR 0004 covers the
-text-embedding numerical path, ADR 0005 covers persistent storage and hybrid
-search, ADR 0007 covers native PNG/DEFLATE decoding, ADR 0008 covers native
-baseline JPEG decoding, and ADR 0010 covers native WAV decoding and audio
-embeddings; this document is the operational reference.
+This document describes the formats implemented through milestone M7 (NEON
+kernels and the first packaging step) and the validation rules that protect the
+product from hostile input. ADR 0002 is the binary format decision record, ADR
+0004 covers the text-embedding numerical path, ADR 0005 covers persistent
+storage and hybrid search, ADR 0007 covers native PNG/DEFLATE decoding, ADR 0008
+covers native baseline JPEG decoding, ADR 0010 covers native WAV decoding and
+audio embeddings, and ADR 0012 covers the NEON path and the model bundle; this
+document is the operational reference.
 
 ## Trust boundary
 
@@ -137,9 +138,9 @@ weights before use.
 - Row-major layout; strides are in elements.
 - Non-finite values are detected before they enter the embedding space.
 
-## Scalar kernels
+## FP32 kernels and the NEON path
 
-The reference path is deterministic, single-threaded, and unsafe-free:
+The scalar reference path is deterministic, single-threaded, and unsafe-free:
 
 | Kernel | Notes |
 |---|---|
@@ -158,6 +159,15 @@ The reference path is deterministic, single-threaded, and unsafe-free:
 | mean pooling | mean over rows of a [sequence, width] matrix |
 | truncation | leading dimensions followed by L2 renormalization |
 | L2 normalization | rejects zero vectors |
+
+Milestone M7 adds a runtime-selected NEON path in `src/tensor/neon.rs` for
+dot products, elementwise operations, matmul, linear projections, RMSNorm, L2
+normalization, mean pooling, and attention scores. Every wrapper checks
+`is_aarch64_feature_detected!("neon")` and falls back to the scalar function
+when the feature is unavailable. The scalar path remains the correctness
+oracle. Differential tests compare each NEON kernel with the scalar reference,
+including tail lengths and real model shapes; the official text, image, and
+audio parity suites are replayed with their existing thresholds.
 
 ## Fixture
 
@@ -452,18 +462,100 @@ corruption, sequence gaps, unknown versions, invalid transaction semantics, and
 non-normalized stored embeddings are reported as typed errors rather than
 silently accepted.
 
-## Internal weight container (planned)
+## Model bundle (M7)
 
-The packer will produce a Rust-defined container with:
+Milestone M7 adds `src/bundle`, a versioned container for the frozen model
+files, and `tools/model-packer`, a Rust `std` packer. The development loaders
+still read a model directory. The final binary will embed the bundle with
+`include_bytes!` and read sections from the embedded bytes; that loading path
+is the remaining M7 packaging work.
 
-- magic and version;
-- framed sections with bounded lengths;
-- a manifest with names, dtypes, shapes, offsets, and SHA-256;
-- a checksum over the container;
-- no executable metadata.
+### Layout
 
-The format will be implemented at the packaging milestone (M12). Until then,
-weights remain external development files.
+All integers are little-endian.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 8 | magic `SVLMDL01` |
+| 8 | 2 | format version (1) |
+| 10 | 4 | header length |
+| 14 | 4 | section count |
+| 18 | 8 | total bundle length |
+| 26 | 4 | header CRC-32 |
+| 30 | header length - 30 | section table |
+| header length | sum of section lengths | section data |
+| total length - 32 | 32 | catalog digest |
+
+The header CRC-32 is computed over every header byte except the CRC field
+itself. The catalog digest is the SHA-256 of the header bytes followed by the
+ordered 32-byte section digests. It binds the section table to the section
+content without hashing the data twice.
+
+Each section entry is:
+
+| Size | Field |
+|---|---|
+| 2 | path length |
+| 1 | role |
+| 1 | flags (0) |
+| 8 | offset |
+| 8 | length |
+| 32 | SHA-256 of the section bytes |
+| path length | UTF-8 relative path |
+
+Roles: 0 manifest, 1 configuration, 2 tokenizer, 3 processor, 4 weights, 5
+other.
+
+### Validation
+
+- magic and format version;
+- header length and section count caps;
+- declared total length equals the input length;
+- header CRC-32;
+- section table fits inside the header;
+- paths are UTF-8, relative, normalized, and free of empty, `.`, and `..`
+  components;
+- paths are strictly sorted and unique;
+- offsets are contiguous from the end of the header;
+- every section ends before the catalog digest;
+- the catalog digest matches;
+- `verify` checks every section SHA-256.
+
+The parser never allocates from an unchecked length and never executes
+metadata. A corrupt or truncated bundle returns `Error::Corrupt`; a documented
+cap returns `Error::LimitExceeded`.
+
+### Caps
+
+| Limit | Value |
+|---|---|
+| Total bundle | 8 GiB |
+| Header | 1 MiB |
+| Sections | 1,024 |
+| Path | 4,096 bytes |
+
+### Packer
+
+The packer validates the frozen manifest revision, each selected file's size,
+and its SHA-256 before writing. It writes to a temporary file, calls
+`sync_all`, renames atomically, then reads the result back, parses it, and
+verifies every section digest.
+
+```bash
+cargo build --manifest-path tools/model-packer/Cargo.toml --release
+tools/model-packer/target/aarch64-apple-darwin/release/model-packer pack \
+  --manifest fixtures/model/manifest.json \
+  --model-dir .model-cache/f9972ac22e696a105c482202646979e33e4b5a1e \
+  --output .model-cache/f9972ac22e696a105c482202646979e33e4b5a1e/model.svlm
+```
+
+The frozen revision produced 9 sections and 1,525,784,026 bytes, verified by
+the `verify` command. The bundle includes the required `config.json`,
+`model.safetensors`, and `tokenizer.json`, plus the official prompt, processor,
+pooling, normalization, and tokenizer model files when the manifest lists them.
+
+Weights are never committed to Git. The bundle is a development artifact in the
+ignored model cache until the embedded loading path is implemented.
 
 ## Tokenization
 

@@ -41,8 +41,9 @@ operations, matmul, linear projections, RMSNorm, L2 normalization, mean pooling,
 and attention scores, always with a tested scalar fallback. The M2 text p50 fell
 from 1.485 s to 159 ms and concurrent throughput rose from 2.43 to 24.47
 requests/s on the reference Apple M2 Pro; the frozen text, image, and audio
-parity suites still pass. The versioned model container, Rust std packer,
-embedded loading path, and Mach-O size/startup measurements remain in progress.
+parity suites still pass. The versioned model container and Rust std packer
+are implemented and a real frozen bundle is verified; embedded loading and
+Mach-O size/startup measurements remain in progress.
 
 ## Requirements
 
@@ -208,7 +209,7 @@ tests are ignored because they load the frozen model and embed several clips:
 | Runtime-selected NEON kernels with scalar fallback | implemented (M7) |
 | Differential scalar-vs-NEON kernel tests | implemented (M7) |
 | Frozen text, image, and audio parity replay after NEON | implemented (M7) |
-| Versioned model container and Rust std packer | in progress (M7) |
+| Versioned model container and Rust std packer | implemented (M7) |
 | Embedded model loading and Mach-O size/startup verification | in progress (M7) |
 | TLS, keep-alive, and HTTP/2 | future work |
 

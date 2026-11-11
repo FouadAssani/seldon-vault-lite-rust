@@ -13,6 +13,7 @@
 
 pub mod api;
 pub mod binary;
+pub mod bundle;
 pub mod cli;
 pub mod error;
 pub mod index;

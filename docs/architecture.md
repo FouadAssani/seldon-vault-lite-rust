@@ -741,9 +741,10 @@ a dependency or if minos is not 11.0.
    HNSW, TLS, keep-alive, and MP3 remain future work.
 5. **M7**: in progress on branch feat/m7-neon-simd-packaging. NEON kernels
    with runtime dispatch, scalar fallback, differential tests, and frozen-model
-   parity replay are implemented. The versioned model container, Rust std
-   packer, embedded loading path, and Mach-O size/startup verification remain
-   in progress.
+   parity replay are implemented. The versioned model container in
+   `src/bundle` and the Rust std packer in `tools/model-packer` are implemented
+   and a real frozen bundle is verified. Embedded loading and Mach-O
+   size/startup verification remain in progress.
 6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and
