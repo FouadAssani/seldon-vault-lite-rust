@@ -226,6 +226,186 @@
         23,
         23
       ]
+    },
+    {
+      "name": "wide_32x16",
+      "source": "fixtures/media/wide_32x16.png",
+      "width": 32,
+      "height": 16,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 528,
+      "target_height": 240,
+      "patch_grid_width": 33,
+      "patch_grid_height": 15,
+      "valid_patches": 495,
+      "soft_tokens": 55,
+      "resized_sha256": "7705bf8798f04f4235213e2fdfa0c1a06c77927b780042daf56c81ace04a5188",
+      "pixel_values_sha256": "4a52c72dff944d19b4156a49c1e44a64a99a832ede98cb590a9b1044cbff564a",
+      "positions_sha256": "65858cdea5c407443098734481413ffb07a0250deeec2c771ff8f5cccbed7e69",
+      "first_patch": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_patch": [
+        0.960784375667572,
+        0.9137255549430847,
+        0.7098039388656616,
+        0.9647059440612793,
+        0.9137255549430847,
+        0.7098039388656616,
+        0.9647059440612793,
+        0.9137255549430847
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        32,
+        14
+      ]
+    },
+    {
+      "name": "tall_16x32",
+      "source": "fixtures/media/tall_16x32.png",
+      "width": 16,
+      "height": 32,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 240,
+      "target_height": 528,
+      "patch_grid_width": 15,
+      "patch_grid_height": 33,
+      "valid_patches": 495,
+      "soft_tokens": 55,
+      "resized_sha256": "02d933beb73a03f5a5f4207452c5d85fd2e4184869f73183eea0f88f783172f7",
+      "pixel_values_sha256": "2e1af5572ecb8b0bc5190e13f966e41cd387df843d7ce9ee9b559291e5f97a15",
+      "positions_sha256": "b29ea3af4eea4d77ca76b832a8dfaf0f31d090dced946645e9c10e4483105e06",
+      "first_patch": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_patch": [
+        0.9137255549430847,
+        0.960784375667572,
+        0.7098039388656616,
+        0.917647123336792,
+        0.960784375667572,
+        0.7098039388656616,
+        0.9215686917304993,
+        0.960784375667572
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        14,
+        32
+      ]
+    },
+    {
+      "name": "quadrants_16x16_rot90",
+      "source": "fixtures/media/quadrants_16x16_rot90.png",
+      "width": 16,
+      "height": 16,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "f5b2a3757f94d066a9944b6a372626bf832f31f5697c98a663a2e5ad3e69ebcc",
+      "pixel_values_sha256": "4828c9ffc8a8dd2dd3fa2ea5dc095ca55b99d9c584403ecdc6026b790dd27c8a",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        0.4745098352432251,
+        0.0,
+        1.0,
+        0.4745098352432251,
+        0.0,
+        1.0,
+        0.4745098352432251,
+        0.0
+      ],
+      "last_patch": [
+        0.21568629145622253,
+        1.0,
+        0.003921568859368563,
+        0.21568629145622253,
+        1.0,
+        0.0,
+        0.21568629145622253,
+        1.0
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
+    },
+    {
+      "name": "quadrants_16x16_rot180",
+      "source": "fixtures/media/quadrants_16x16_rot180.png",
+      "width": 16,
+      "height": 16,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "5200bce0b374212710a7801fbf7008a611326fc2bf89835385e64106f79259dd",
+      "pixel_values_sha256": "b5ee7cfdfd6f1deb4d3b3302ce746092ed7c9ed6654d9d46322ee6e6f51ba38c",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907,
+        0.7254902124404907
+      ],
+      "last_patch": [
+        1.0,
+        0.003921568859368563,
+        0.003921568859368563,
+        1.0,
+        0.003921568859368563,
+        0.0,
+        1.0,
+        0.003921568859368563
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
     }
   ]
 }

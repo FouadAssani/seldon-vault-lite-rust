@@ -128,9 +128,14 @@ the delivered binary never runs them.
   upscales a tiny image to 576 patches at the 70-token budget and the scalar
   tower runs 16 layers. The default suite covers one full case; the five-case
   corpus is an ignored test for manual verification.
-- The preprocessing fixtures cover grayscale, RGB, RGBA, gradients, and
-  structured quadrants. Aspect ratios, rotations, and cross-modal ranking still
-  need dedicated fixtures before M4 can be declared complete.
-- Image storage, image indexing in the CLI, and text-to-image search remain
-  pending. No image modality is declared supported until those paths are
-  tested end to end.
+- The preprocessing fixtures cover grayscale, RGB, RGBA, gradients,
+  structured quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2
+  aspect ratios. Vision parity for the rotation and aspect-ratio variants,
+  text-to-image ranking, and image-to-image ranking still need dedicated
+  fixtures before M4 can be declared complete.
+- The CLI can embed an image with embed --image. Image documents are stored
+  with modality image, indexed with empty chunk text, and searched by exact
+  vector search; an end-to-end test indexes one image and retrieves it with a
+  text query. Text-to-image ranking quality and image-to-image ranking remain
+  pending. No image modality is declared supported end to end until those
+  paths are tested.

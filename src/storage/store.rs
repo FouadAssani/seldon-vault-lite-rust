@@ -531,11 +531,13 @@ impl Store {
                 "store is poisoned after a failed post-commit apply; reopen it",
             ));
         }
-        if document.modality() != Modality::Text {
-            return Err(Error::unsupported(format!(
-                "modality {} is not implemented in milestone M3",
-                document.modality().as_str()
-            )));
+        match document.modality() {
+            Modality::Text | Modality::Image => {}
+            Modality::Audio => {
+                return Err(Error::unsupported(
+                    "audio documents are not implemented before milestone M5",
+                ));
+            }
         }
         if chunks.is_empty() {
             return Err(Error::usage(format!(
@@ -796,11 +798,13 @@ impl StoreState {
         for operation in transaction.operations() {
             match operation {
                 Operation::PutDocument(document) => {
-                    if document.modality() != Modality::Text {
-                        return Err(Error::unsupported(format!(
-                            "modality {} is not implemented in milestone M3",
-                            document.modality().as_str()
-                        )));
+                    match document.modality() {
+                        Modality::Text | Modality::Image => {}
+                        Modality::Audio => {
+                            return Err(Error::unsupported(
+                                "audio documents are not implemented before milestone M5",
+                            ));
+                        }
                     }
                     if self.documents.contains_key(document.id()) {
                         return Err(inconsistency(
@@ -1110,13 +1114,13 @@ mod tests {
     }
 
     #[test]
-    fn non_text_modalities_and_empty_chunk_lists_are_rejected() {
+    fn audio_modalities_and_empty_chunk_lists_are_rejected() {
         let dir = temp_dir("rejected");
         let mut store = Store::open(&dir).expect("open store");
-        let image = Document::new(DocumentId::new("image").expect("id"), Modality::Image);
+        let audio = Document::new(DocumentId::new("audio").expect("id"), Modality::Audio);
         let error = store
-            .put_document(image, vec![chunk("ignored", vec![1.0, 0.0])])
-            .expect_err("image is not implemented");
+            .put_document(audio, vec![chunk("ignored", vec![1.0, 0.0])])
+            .expect_err("audio is not implemented");
         assert!(matches!(error, Error::Unsupported(_)), "{error}");
 
         let error = store
@@ -1125,6 +1129,37 @@ mod tests {
         assert!(matches!(error, Error::Usage(_)), "{error}");
         assert_eq!(store.document_count(), 0);
         assert_eq!(store.journal_offset(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn image_documents_persist_and_replay() {
+        let dir = temp_dir("image");
+        let mut store = Store::open(&dir).expect("open store");
+        let image = Document::new(DocumentId::new("image-1").expect("id"), Modality::Image)
+            .with_title("Quadrants")
+            .expect("title")
+            .with_source("fixtures/media/quadrants_16x16.png")
+            .expect("source");
+        store
+            .put_document(image, vec![chunk("", vec![1.0, 0.0])])
+            .expect("image insert");
+        drop(store);
+
+        let store = Store::open(&dir).expect("reopen store");
+        let document = store
+            .document(&DocumentId::new("image-1").expect("id"))
+            .expect("image document");
+        assert_eq!(document.modality(), Modality::Image);
+        assert_eq!(document.title(), Some("Quadrants"));
+        assert_eq!(
+            document.source(),
+            Some("fixtures/media/quadrants_16x16.png")
+        );
+        let chunk_id = store.document_chunks(document.id())[0];
+        let chunk = store.chunk(chunk_id).expect("image chunk");
+        assert_eq!(chunk.text(), "");
+        assert_eq!(chunk.embedding(), &[1.0, 0.0]);
         let _ = fs::remove_dir_all(&dir);
     }
 

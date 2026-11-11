@@ -339,12 +339,13 @@ pooling grid produces an integral number of soft tokens.
 
 ### Fixtures
 
-fixtures/media/preprocess_golden.json records five cases with source image,
+fixtures/media/preprocess_golden.json records nine cases with source image,
 dimensions, budget, target size, patch grid, valid patches, soft tokens,
 SHA-256 of the resized bytes, padded patch values, and positions, plus selected
-first and last patch values. Provenance and fingerprints are recorded in
-fixtures/media/README.md. The generator is
-scripts/generate_image_goldens.py and is laboratory-only.
+first and last patch values. The cases cover grayscale, RGB, RGBA, gradients,
+quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2 aspect ratios.
+Provenance and fingerprints are recorded in fixtures/media/README.md. The
+generator is scripts/generate_image_goldens.py and is laboratory-only.
 
 Image storage and cross-modal search are not implemented yet. See ADR 0009.
 

@@ -19,6 +19,7 @@ use crate::json;
 use crate::media::Image;
 use crate::media::preprocess::{PreprocessOptions, preprocess};
 use crate::model::config::{MAX_CONFIG_BYTES, MAX_TEXT_TOKENS, TextConfig};
+use crate::model::prompt::{self, Prompt};
 use crate::model::text::{ForwardOutput, TextModel};
 use crate::model::tokenizer::Tokenizer;
 use crate::model::vision::{VisionConfig, VisionModel, VisionOutput, VisionWeights};
@@ -132,6 +133,28 @@ impl ImageEmbedder {
     /// Special token ids used for image prompts.
     pub fn special_tokens(&self) -> ImageSpecialTokens {
         self.tokens
+    }
+
+    /// Embeds raw text with the official prompt prefix.
+    ///
+    /// This uses the same text model and tokenizer as the image path, so a
+    /// mixed text/image index shares one embedding space and one loaded model.
+    pub fn embed_text(&self, text: &str, prompt: Prompt, dimension: usize) -> Result<Vec<f32>> {
+        let embedding_dim = self.model.config().embedding_dim();
+        if dimension == 0 || dimension > embedding_dim {
+            return Err(Error::internal(format!(
+                "embedding dimension {dimension} is outside 1..={embedding_dim}"
+            )));
+        }
+        let full = prompt::apply(prompt, text);
+        let ids = self.tokenizer.encode(&full, true)?;
+        if ids.len() > MAX_TEXT_TOKENS {
+            return Err(Error::limit_exceeded(format!(
+                "tokenized input has {} tokens, above the {MAX_TEXT_TOKENS}-token context",
+                ids.len()
+            )));
+        }
+        self.model.embed_ids(&ids, dimension)
     }
 
     /// Embeds one decoded image and returns a Matryoshka-dimension vector.

@@ -179,7 +179,22 @@ CASES = [
     ("gray_2x2", "fixtures/media/gray_2x2.png", 70),
     ("quadrants_16x16", "fixtures/media/quadrants_16x16.png", 70),
     ("gradient_16x16", "fixtures/media/gradient_16x16.png", 70),
+    ("wide_32x16", "fixtures/media/wide_32x16.png", 70),
+    ("tall_16x32", "fixtures/media/tall_16x32.png", 70),
+    ("quadrants_16x16_rot90", "fixtures/media/quadrants_16x16_rot90.png", 70),
+    ("quadrants_16x16_rot180", "fixtures/media/quadrants_16x16_rot180.png", 70),
 ]
+
+# The vision tower is expensive in the scalar reference environment. The
+# committed image embedding fixture covers the original five cases; the
+# rotation and aspect-ratio cases exercise preprocessing only.
+VISION_CASES = {
+    "rgb_2x2",
+    "rgba_2x2",
+    "gray_2x2",
+    "quadrants_16x16",
+    "gradient_16x16",
+}
 
 
 def main():
@@ -251,6 +266,8 @@ def main():
 
     vision_cases = []
     for name, source, budget, data in prepared:
+        if name not in VISION_CASES:
+            continue
         pixel_values = data["pixel_values"][None]
         positions = data["positions"][None]
         input_ids = torch.tensor(

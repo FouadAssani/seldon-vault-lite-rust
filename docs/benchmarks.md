@@ -119,6 +119,11 @@ a 768-to-3,072 feed-forward. The default 280-token budget produces 2,304 real
 patches, so the same scalar path is about 16 times larger and is not practical
 yet.
 
+The end-to-end CLI path (index one image at 70 tokens, then retrieve it with a
+text vector query) takes about 100 s in the test profile. That measurement
+includes model loading, preprocessing, the vision tower, one image embedding,
+the text query embedding, and the journal write.
+
 No intra-request parallelism, batching, or SIMD is implemented at M4. M7 must
 profile the image path before optimizing, compare every change with the image
 goldens and the preprocessing fingerprints, and record CPU, compiler, model

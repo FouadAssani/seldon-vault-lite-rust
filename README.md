@@ -42,6 +42,11 @@ Text embedding with the frozen model cache:
 
     cargo run --release -- embed --prompt SearchQuery "What causes the northern lights?"
 
+Image embedding with the frozen model cache (PNG or JPEG; expensive on the
+scalar path):
+
+    cargo run --release -- embed --image fixtures/media/quadrants_16x16.png --dim 768
+
 Token ids without the tokenizer, useful for diagnostics:
 
     cargo run -- embed --model-dir fixtures/model/tiny_text --ids 1,5,7,9,2 --dim 8
@@ -52,6 +57,16 @@ Index a JSONL file and search it:
     cargo run --release -- search --data-dir ./data --mode hybrid "ownership in Rust"
     cargo run -- verify --data-dir ./data
     cargo run -- compact --data-dir ./data
+
+Index an image document and search it with a text query:
+
+    echo '{"id":"img-1","image":"fixtures/media/quadrants_16x16.png","title":"Quadrants"}' > images.jsonl
+    cargo run --release -- index --data-dir ./data --vision-tokens 70 images.jsonl
+    cargo run --release -- search --data-dir ./data --mode vector "a colorful four-quadrant test pattern"
+
+Image lines have no BM25 text; they are retrieved by exact vector search. The
+vision budget is one of 70, 140, 280, 560, or 1120; 70 keeps the scalar path
+practical.
 
 For reproducible tests without the full tokenizer, index and vector search
 accept a diagnostic --ids path against the tiny official model:
@@ -95,7 +110,7 @@ The full five-case image corpus is an ignored test:
 | BM25 lexical index with filters | implemented |
 | Exact cosine vector search (correctness oracle) | implemented |
 | Hybrid RRF fusion and pagination | implemented |
-| CLI embed, index, search, verify, compact, version, help | implemented |
+| CLI embed (text, token ids, and images), index (text and images), search, verify, compact, version, help | implemented |
 | Native zlib/DEFLATE decoder (stored, fixed, dynamic) | implemented |
 | Strict PNG decoder for 8-bit gray/RGB/RGBA, non-interlaced | implemented |
 | PNG dimension, pixel, chunk, and decompression caps | implemented |
@@ -104,9 +119,11 @@ The full five-case image corpus is an ignored test:
 | JPEG dimension, pixel, MCU, block, and decoded-memory caps | implemented |
 | Shared validated decoded-image type for PNG and JPEG | implemented |
 | Official image preprocessing with bit-exact resize and patches | implemented |
+| CLI image embedding through the official preprocessing and vision tower | implemented |
 | Vision tower, axial RoPE, 3x3 pooling, and text projection | implemented |
 | Image-only embeddings in the shared 768-dimensional space | implemented |
-| Image storage, CLI image indexing, and cross-modal search | pending (M4) |
+| Image storage and CLI image indexing | implemented |
+| Text-to-image ranking quality and image-to-image ranking | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
 | Audio embeddings | pending (M5) |

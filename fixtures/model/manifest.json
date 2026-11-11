@@ -242,8 +242,8 @@
     },
     "preprocess_golden": {
       "path": "fixtures/media/preprocess_golden.json",
-      "sha256": "5d1636db713eabb338e6d11a347f4679dca83224fd8ad9f96ff9a32a62c20d52",
-      "size": 5725,
+      "sha256": "5f4d8628d7d4dd7c173b0a33bc67315db929955be70fb0ac56b876b3be84c98c",
+      "size": 10352,
       "schema_version": 1,
       "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32; torch.nn.functional.interpolate bicubic antialias"
     },

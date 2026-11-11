@@ -85,8 +85,9 @@ behavior and corruption handling only.
 M4 also adds two reference fixtures:
 
 - fixtures/media/preprocess_golden.json records the official resized bytes,
-  padded patch values, and positions for five images at the 70 or 280 token
-  budget, with SHA-256 fingerprints;
+  padded patch values, and positions for nine images at the 70 or 280 token
+  budget, including rotations and non-square aspect ratios, with SHA-256
+  fingerprints;
 - fixtures/model/image_golden.json records the patch embedder probe, all 16
   vision layer probes, the projected vision soft tokens, the input token ids,
   and the final normalized image embedding for the same five images.
@@ -194,10 +195,15 @@ Golden tests cover at least:
 - intermediate layer outputs and the final projection;
 - a query and an indexed document, kept distinct by their prefixes.
 
-Image decoder coverage exists for PNG and baseline JPEG, and image embedding
-coverage exists for grayscale, RGB, RGBA, gradient, and quadrant fixtures at
-the 70 and 280 token budgets. Aspect-ratio variants, rotations, text-to-image
-ranking, and image-to-image ranking remain mandatory before M4 can be declared
+Image decoder coverage exists for PNG and baseline JPEG. Image preprocessing
+coverage exists for grayscale, RGB, RGBA, gradient, quadrant, rotation, and
+non-square aspect-ratio fixtures at the 70 and 280 token budgets. Image
+embedding coverage exists for the five original fixtures at the 70 and 280
+token budgets. The CLI index and vector-search path is exercised end to end
+with one indexed image and a text query: the image document is stored with
+modality image, found by exact vector search, and returned with its source.
+Vision parity for rotations and aspect-ratio variants, text-to-image ranking
+quality, and image-to-image ranking remain mandatory before M4 can be declared
 complete. WAV audio embeddings remain mandatory at M5 and are not claimed.
 
 ## Tolerances

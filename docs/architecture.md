@@ -183,10 +183,15 @@ tokenizer and the prefix for diagnostics.
 index requires --data-dir and one JSONL file or -. Each line is an object with
 id, text, optional title, optional source, and optional metadata. Duplicate
 ids, unknown fields, malformed JSON, oversized lines, and more than 10,000
-documents are rejected before any write. Embeddings use the Document prompt
-and the frozen tokenizer. A diagnostic --ids mode accepts an ids array and
-uses TextModel::embed_ids instead of the tokenizer; text is still stored for
-BM25.
+documents are rejected before any write. Text embeddings use the Document
+prompt and the frozen tokenizer. Image lines carry an image path instead of
+text, are decoded with the native PNG/JPEG decoders, and are embedded through
+the official preprocessing and vision tower. Their chunk text is empty, so
+they participate in vector search and modality filters but not BM25. When
+source is omitted, the image path becomes the source. A diagnostic --ids mode
+accepts an ids array and uses TextModel::embed_ids instead of the tokenizer;
+text is still stored for BM25. embed --image exposes the image path directly,
+and --vision-tokens selects one of the official visual budgets.
 
 search requires --data-dir and accepts --model-dir, --dim, --mode
 hybrid|lexical|vector, --limit, --offset, repeatable --filter KEY=VALUE, and a
@@ -517,7 +522,8 @@ a dependency or if minos is not 11.0.
 2. **M4**: native PNG and baseline JPEG decoding, official image
    preprocessing, the vision tower, and image embeddings are implemented and
    validated against the official reference. Next: image storage and CLI
-   indexing, aspect-ratio and rotation fixtures, and text-to-image search.
+   indexing and text-to-image search. Rotation and aspect-ratio preprocessing
+   fixtures are committed; vision parity for those variants remains pending.
 3. **M5**: WAV and compliant audio embeddings.
 4. **M6**: HTTP API, bounded job queue, and hardening.
 5. **M7**: NEON and macOS packaging.

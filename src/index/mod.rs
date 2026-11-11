@@ -510,6 +510,49 @@ mod tests {
     }
 
     #[test]
+    fn image_documents_are_vector_searchable_and_filterable() {
+        let dir = temp_dir("image");
+        let mut store = Store::open(&dir).expect("open store");
+        store
+            .put_document(
+                Document::new(DocumentId::new("img-1").expect("id"), Modality::Image)
+                    .with_source("fixtures/media/quadrants_16x16.png")
+                    .expect("source"),
+                vec![ChunkInput::new("", vec![0.0, 1.0])],
+            )
+            .expect("image document");
+        store
+            .put_document(
+                document("doc-1", "en"),
+                vec![ChunkInput::new("rust language", vec![1.0, 0.0])],
+            )
+            .expect("text document");
+
+        let index = Index::build(&store).expect("index");
+        let hits = index
+            .search(&vector_request(&[0.0, 1.0]))
+            .expect("vector search");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].document_id.as_str(), "img-1");
+        assert_eq!(hits[0].modality, Modality::Image);
+        assert_eq!(hits[0].text, "");
+        assert_eq!(hits[0].source, Some("fixtures/media/quadrants_16x16.png"));
+
+        let lexical = index
+            .search(&lexical_request("rust"))
+            .expect("lexical search");
+        assert_eq!(lexical.len(), 1);
+        assert_eq!(lexical[0].document_id.as_str(), "doc-1");
+
+        let mut request = vector_request(&[0.0, 1.0]);
+        request.filters = Filters::new().with_modality(Modality::Image);
+        let filtered = index.search(&request).expect("filtered vector search");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].document_id.as_str(), "img-1");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn hybrid_search_fuses_lexical_and_vector_ranks() {
         let dir = temp_dir("hybrid");
         let store = build_store(&dir);
