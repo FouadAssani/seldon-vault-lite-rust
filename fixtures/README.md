@@ -3,9 +3,10 @@
 This directory contains compact, versioned fixtures used by reproducible
 tests. Model weights and multi-gigabyte files are never committed.
 
-## State at milestone M2
+## State at milestone M4 (started)
 
-Eight fixture files are present:
+The M1/M2/M3 fixtures remain, and four small PNG files have been added for the
+native image decoder. They are described in media/README.md.
 
 - `formats/mini.safetensors`: a 281-byte deterministic Safetensors file with
   F32, BF16, and zero-sized tensors. It proves format handling only; it is not
@@ -27,8 +28,10 @@ Eight fixture files are present:
 - `model/tiny_text/golden.json`: the official layer outputs and normalized
   embeddings for the tiny model.
 
-Image and audio fixtures do not exist yet. Do not fabricate "plausible"
-fixtures: they must come from a documented reference and be verifiable.
+The PNG fixtures prove decoder behavior only; they are not official image
+preprocessing or embedding goldens. JPEG and audio fixtures do not exist yet.
+Do not fabricate "plausible" fixtures: they must come from a documented
+reference and be verifiable.
 
 ## Rules
 
@@ -60,7 +63,12 @@ fixtures/
 │   ├── README.md
 │   ├── golden.json
 │   └── mini_tokenizer.json
-├── images/                # small PNG/JPEG images (M4, pending)
+├── media/
+│   ├── README.md
+│   ├── rgb_2x2.png
+│   ├── rgba_2x2.png
+│   ├── gray_2x2.png
+│   └── gradient_16x16.png
 └── audio/                 # short WAV excerpts (M5, pending)
 ```
 
@@ -75,6 +83,10 @@ fixtures/
 | `model/tiny_text/config.json` | `8aa35d31bdee5f1ff3284d3ed08b64377c1e4675a471d7f2d89ef4a89a9566f1` |
 | `model/tiny_text/model.safetensors` | `2daec622d6d3be44a339158678939f9b739a3b21c8be1dce8f6f7c38fb90caa6` |
 | `model/tiny_text/golden.json` | `28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94` |
+| `media/rgb_2x2.png` | `edbfc60195995fc33f65a2d3cfaa65fffa3c0c68246af114c7076fec71e12c89` |
+| `media/rgba_2x2.png` | `fa6cf6c3de0c8a91ab7bb255e4b7b77d2397cd4f21732b7168dd6ec375bd0db8` |
+| `media/gray_2x2.png` | `e1777c3fabfd5ed4697f373347c367393cc219b80c7d6e4c609a41afb24be198` |
+| `media/gradient_16x16.png` | `87b57cb2838c25880a9695ddc42063c44d32c31b8087fb05c8c74f8e90bc6428` |
 | `model/manifest.json` | self-describing; fixture hashes are inside |
 
 ## Model manifest

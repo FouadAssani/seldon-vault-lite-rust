@@ -1,12 +1,12 @@
-# Architecture — milestone M3 state
+# Architecture — milestone M4 state
 
 ## Purpose
 
-This document describes the repository organization at milestone M3 and the
+This document describes the repository organization at milestone M4 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, ADR 0004, ADR 0005, or ADR 0006, which are authoritative
-for foundational, format, model, text-embedding, storage/index, and
-snapshot/compaction decisions.
+ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, or ADR 0007, which are
+authoritative for foundational, format, model, text-embedding, storage/index,
+snapshot/compaction, and PNG/DEFLATE decisions.
 
 ## Current state
 
@@ -24,6 +24,7 @@ The repository contains:
     ├── binary/
     │   ├── mod.rs
     │   ├── reader.rs       # bounded byte reader and file cap
+    │   ├── crc32.rs        # streaming CRC-32/ISO-HDLC
     │   ├── sha256.rs       # streaming SHA-256
     │   ├── bf16.rs         # BF16 <-> FP32 conversion
     │   └── safetensors.rs  # strict read-only Safetensors reader
@@ -35,9 +36,12 @@ The repository contains:
     │   ├── text.rs         # EmbeddingGemma 2 text forward pass
     │   ├── prompt.rs       # official prompt prefixes
     │   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
+    ├── media/
+    │   ├── mod.rs
+    │   ├── deflate.rs      # bounded zlib/DEFLATE decoder
+    │   └── png.rs          # strict PNG parser and scanline reconstruction
     ├── storage/
     │   ├── mod.rs
-    │   ├── checksum.rs     # CRC-32/ISO-HDLC
     │   ├── codec.rs        # bounded little-endian encoder/decoder
     │   ├── model.rs        # documents, chunks, metadata, transactions
     │   ├── journal.rs      # framed records, append, scan, recovery
@@ -58,6 +62,7 @@ The repository contains:
     tests/
     ├── cli.rs              # binary integration tests
     ├── formats.rs          # public API format/tensor integration tests
+    ├── media.rs            # public API PNG/DEFLATE integration tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
@@ -67,6 +72,7 @@ The repository contains:
     ├── adr/0004-text-embeddings.md
     ├── adr/0005-persistent-storage-and-hybrid-search.md
     ├── adr/0006-snapshots-compaction-and-read-only-views.md
+    ├── adr/0007-native-png-and-deflate-decoding.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -89,10 +95,12 @@ The repository contains:
     scripts/
         └── verify.sh       # full milestone quality gate
 
-No api, media, or jobs module is created empty. They will appear with their
-first testable feature, at the corresponding milestone. Image and audio
-inference are not implemented yet. Snapshots and compaction are not
-implemented yet; the journal is replayed in full on open.
+No api or jobs module is created empty. They will appear with their first
+testable feature, at the corresponding milestone. The media module now contains
+the native zlib/DEFLATE and PNG decoders; JPEG, official image preprocessing,
+and the vision encoder are not implemented yet. Image embeddings and audio
+inference are not claimed. Snapshots and compaction are implemented; see ADR
+0006.
 
 ## Layers and dependencies
 
@@ -107,8 +115,10 @@ Rules:
 - json depends only on error.
 - binary depends on error, json, and tensor.
 - tensor depends only on error.
-- storage depends on binary (bounded file reads) and error; it does not depend
-  on the model, index, CLI, or HTTP API.
+- media depends on binary (bounded file reads and CRC-32) and error; it does
+  not depend on storage, model, index, CLI, or the HTTP API.
+- storage depends on binary (bounded file reads and CRC-32) and error; it does
+  not depend on the model, index, CLI, or HTTP API.
 - index depends on storage and error; it does not depend on the model or CLI.
 - model depends on binary, json, tensor, and error; it does not depend on
   storage or the HTTP API.
@@ -259,6 +269,24 @@ ascending chunk id, and pagination slices the deterministic ranking.
 No approximate index is introduced at M3. The exact vector path is the
 correctness oracle for any future HNSW work.
 
+### Media
+
+src/media/deflate.rs implements a bounded zlib/DEFLATE decoder with stored,
+fixed-Huffman, and dynamic-Huffman blocks, LZ77 back-references, and an exact
+Adler-32 trailer. It rejects truncated streams, invalid or oversubscribed
+Huffman tables, impossible distances, bad checksums, preset dictionaries, and
+trailing bytes.
+
+src/media/png.rs implements a strict PNG parser for non-interlaced 8-bit
+grayscale, RGB, and RGBA images. It validates the signature, IHDR fields, every
+chunk length and CRC, dimensions, pixel count, decompressed size, filter bytes,
+and the zlib stream. Palette, 16-bit, interlaced, tRNS, and unknown critical
+chunks are rejected as unsupported. Caps are 64 MiB per file, 16,384 per
+dimension, 16,777,216 pixels, and 64 MiB decompressed.
+
+JPEG, official image preprocessing, the vision encoder, image storage, and
+cross-modal search are not implemented yet. No image modality is claimed.
+
 ## Model boundary
 
 The model is frozen at revision
@@ -381,6 +409,11 @@ The full-model parity test is:
 It runs automatically when the model cache is present. Set
 SELDON_SKIP_MODEL_PARITY=1 to skip it during a quick check.
 
+M4 adds unit and integration tests for the zlib/DEFLATE decoder and the PNG
+parser, including every truncation of a valid fixture, corrupted chunk CRCs,
+unsupported PNG variants, decompression bombs, and all five scanline filters.
+The PNG fixtures and their provenance are recorded in fixtures/media/README.md.
+
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0.
 
@@ -389,10 +422,12 @@ a dependency or if minos is not 11.0.
 1. **M3**: journal, snapshots, safe compaction, read-only views, BM25, exact
    vector search, and RRF are implemented. HNSW remains deferred until volume
    and latency measurements justify it.
-2. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
-3. **M6**: HTTP API, bounded job queue, and hardening.
-4. **M7**: NEON and macOS packaging.
-5. **M8/M9**: final macOS validation, then Linux port.
+2. **M4**: native PNG decoding and DEFLATE are implemented. Next: JPEG,
+   official image preprocessing, the vision encoder, and cross-modal tests.
+3. **M5**: WAV and compliant audio embeddings.
+4. **M6**: HTTP API, bounded job queue, and hardening.
+5. **M7**: NEON and macOS packaging.
+6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and
 without replaying the golden tests.

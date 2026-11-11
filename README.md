@@ -3,17 +3,18 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M3 — persistent storage, snapshots, compaction, and hybrid
-text search.** M0, M1, and M2 are complete: the std-only foundations, strict
-binary formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer,
-official prompts, and the full EmbeddingGemma 2 text encoder with Matryoshka
-dimensions. M3 adds an append-only journal with CRC-32-framed atomic
-transactions, deterministic replay and crash recovery, versioned snapshots,
-safe compaction, lock-free read-only views, an exclusive writer lock, a
-persistent document and chunk store, a BM25 inverted index, exact cosine vector
-search, RRF hybrid fusion, and the CLI index, search, verify, and compact
-commands. HNSW remains deferred until measurements justify it; image and audio
-are not implemented and are not declared supported.
+**Status: milestone M4 started — native PNG and DEFLATE decoding.**
+M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
+formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
+prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
+the persistent journal/snapshot store with BM25, exact vector search, RRF
+hybrid fusion, lock-free read-only views, and the CLI index, search, verify,
+and compact commands. M4 starts the image path with a native zlib/DEFLATE
+decoder and a strict PNG parser for non-interlaced 8-bit grayscale, RGB, and
+RGBA images, with dimension, pixel, decompressed-size, and file-size caps.
+JPEG, official image preprocessing, the vision encoder, and cross-modal search
+are not implemented yet; image and audio are not declared supported. HNSW
+remains deferred until measurements justify it.
 
 ## Requirements
 
@@ -57,7 +58,7 @@ The full-model parity test runs when .model-cache/<revision>/model.safetensors
 is present. Set SELDON_SKIP_MODEL_PARITY=1 to skip it during a quick check;
 the tiny official fixture still runs.
 
-## What milestone M3 provides
+## What the current milestones provide
 
 | Area | Status |
 |---|---|
@@ -82,6 +83,11 @@ the tiny official fixture still runs.
 | Exact cosine vector search (correctness oracle) | implemented |
 | Hybrid RRF fusion and pagination | implemented |
 | CLI embed, index, search, verify, compact, version, help | implemented |
+| Native zlib/DEFLATE decoder (stored, fixed, dynamic) | implemented |
+| Strict PNG decoder for 8-bit gray/RGB/RGBA, non-interlaced | implemented |
+| PNG dimension, pixel, chunk, and decompression caps | implemented |
+| JPEG decoder | pending (M4) |
+| Official image preprocessing and vision encoder | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
 | Image and audio embeddings | pending (M4/M5) |
@@ -96,7 +102,8 @@ the tiny official fixture still runs.
 - [ADR 0004 — Text embeddings](docs/adr/0004-text-embeddings.md)
 - [ADR 0005 — Persistent storage and hybrid search](docs/adr/0005-persistent-storage-and-hybrid-search.md)
 - [ADR 0006 — Snapshots, compaction, and read-only views](docs/adr/0006-snapshots-compaction-and-read-only-views.md)
-- [Architecture (M3 state)](docs/architecture.md)
+- [ADR 0007 — Native PNG and DEFLATE decoding](docs/adr/0007-native-png-and-deflate-decoding.md)
+- [Architecture (M4 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
 - [Tokenizer and prompts](docs/tokenizer.md)

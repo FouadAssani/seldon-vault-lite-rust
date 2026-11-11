@@ -31,9 +31,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use crate::binary::crc32::crc32;
 use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
-use crate::storage::checksum::crc32;
 
 /// Journal file name inside a data directory.
 pub const JOURNAL_FILE_NAME: &str = "journal.log";
