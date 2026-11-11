@@ -203,11 +203,13 @@ token budgets. The CLI index and vector-search path is exercised end to end
 with one indexed image and a text query: the image document is stored with
 modality image, found by exact vector search, and returned with its source.
 A two-image ranking test indexes a colorful quadrant image and a grayscale
-image; the query "a colorful four-quadrant test pattern" ranks the quadrant
-image first and the grayscale image second, with modality image. Vision parity
-for rotations and aspect-ratio variants, broader text-to-image ranking quality,
-and image-to-image ranking remain mandatory before M4 can be declared complete.
-WAV audio embeddings remain mandatory at M5 and are not claimed.
+image. The text query "a colorful four-quadrant test pattern" ranks the
+quadrant image first and the grayscale image second. An image query with the
+quadrant image ranks the identical image first and the grayscale image second.
+Both queries return modality image. Vision parity for rotations and
+aspect-ratio variants and broader text-to-image and image-to-image ranking
+quality remain mandatory before M4 can be declared complete. WAV audio
+embeddings remain mandatory at M5 and are not claimed.
 
 ## Tolerances
 

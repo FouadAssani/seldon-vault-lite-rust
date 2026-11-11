@@ -101,7 +101,8 @@ INDEX:
 SEARCH:
     search --data-dir <DIR> [--model-dir <DIR>] [--dim <N>]
            [--mode hybrid|lexical|vector] [--limit <N>] [--offset <N>]
-           [--filter KEY=VALUE]... [--ids <ID,ID,...>] [QUERY...]
+           [--filter KEY=VALUE]... [--ids <ID,ID,...>] [--image <PATH>]
+           [QUERY...]
 
     --data-dir    Data directory holding the journal and writer lock
     --model-dir   Model directory (default: .model-cache/<revision>)
@@ -111,6 +112,10 @@ SEARCH:
     --offset      Number of ranked hits to skip (default: 0)
     --filter      Exact metadata equality filter; repeatable
     --ids         Diagnostic query ids for vector or hybrid mode
+    --image       PNG or JPEG image query; requires vector mode and cannot be
+                  combined with query text or --ids
+    --vision-tokens  Visual token budget for an image query: 70, 140, 280,
+                  560, or 1120 (default: 280)
 
     QUERY is joined with spaces; with no query, standard input is read with
     a 1 MiB cap. Lexical mode does not load the model.
@@ -228,6 +233,10 @@ pub struct SearchArgs {
     pub filters: Filters,
     /// Query text or standard input.
     pub input: SearchInput,
+    /// Optional image query for vector mode.
+    pub image: Option<PathBuf>,
+    /// Visual token budget for an image query.
+    pub vision_budget: usize,
     /// Diagnostic query token ids for vector or hybrid mode.
     pub ids: Option<Vec<u32>>,
 }
@@ -541,6 +550,8 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
     let mut offset = 0usize;
     let mut filters = Filters::new();
     let mut ids = None;
+    let mut image = None;
+    let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
     let mut query_parts = Vec::new();
     let mut index = 0;
 
@@ -588,6 +599,17 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
                 }
                 ids = Some(parse_ids(value)?);
             }
+            "--image" => {
+                let value = next_value(&args, &mut index, "--image")?;
+                if image.is_some() {
+                    return Err(Error::usage("--image was provided more than once"));
+                }
+                image = Some(PathBuf::from(value));
+            }
+            "--vision-tokens" => {
+                let value = next_value(&args, &mut index, "--vision-tokens")?;
+                vision_budget = parse_vision_budget(value)?;
+            }
             "-h" | "--help" => return Ok(Command::Help),
             other if other.starts_with('-') => {
                 return Err(Error::usage(format!("unknown option {other}")));
@@ -602,6 +624,16 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         return Err(Error::usage(
             "--ids cannot be used with lexical search mode",
         ));
+    }
+    if image.is_some() {
+        if ids.is_some() || !query_parts.is_empty() {
+            return Err(Error::usage(
+                "--image cannot be combined with query text or --ids",
+            ));
+        }
+        if mode != SearchMode::Vector {
+            return Err(Error::usage("--image requires vector search mode"));
+        }
     }
     let input = if query_parts.is_empty() {
         SearchInput::Stdin
@@ -618,6 +650,8 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         offset,
         filters,
         input,
+        image,
+        vision_budget,
         ids,
     }))
 }
@@ -860,6 +894,28 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
         return Err(Error::usage(
             "--ids cannot be used with lexical search mode",
         ));
+    }
+    if let Some(path) = &args.image {
+        if args.mode != SearchMode::Vector {
+            return Err(Error::usage("--image requires vector search mode"));
+        }
+        let image = decode_image(path)?;
+        let embedder = ImageEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        let embedding = embedder.embed(
+            &image,
+            args.dimension,
+            PreprocessOptions::new(args.vision_budget)?,
+        )?;
+        let store = ReadOnlyStore::open(&args.data_dir)?;
+        let index = Index::build_read_only(&store)?;
+        let mut request = SearchRequest::new(SearchMode::Vector, args.limit);
+        request.offset = args.offset;
+        request.filters = args.filters;
+        request.text = None;
+        request.embedding = Some(&embedding);
+        let hits = index.search(&request)?;
+        return write_hits(stdout, &hits);
     }
     let query_text = match args.input {
         SearchInput::Text(text) => text,
@@ -1617,6 +1673,11 @@ mod tests {
             ]
         );
         assert_eq!(args.input, SearchInput::Text("rust language".to_owned()));
+        assert_eq!(args.image, None);
+        assert_eq!(
+            args.vision_budget,
+            crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS
+        );
         assert_eq!(args.ids, None);
 
         let args = parse_search_args(&[
@@ -1630,7 +1691,26 @@ mod tests {
         ]);
         assert_eq!(args.mode, SearchMode::Vector);
         assert_eq!(args.input, SearchInput::Stdin);
+        assert_eq!(args.image, None);
         assert_eq!(args.ids, Some(vec![1, 2, 3]));
+
+        let args = parse_search_args(&[
+            "search",
+            "--data-dir",
+            "data",
+            "--mode",
+            "vector",
+            "--image",
+            "fixtures/media/quadrants_16x16.png",
+            "--vision-tokens",
+            "70",
+        ]);
+        assert_eq!(
+            args.image,
+            Some(PathBuf::from("fixtures/media/quadrants_16x16.png"))
+        );
+        assert_eq!(args.vision_budget, 70);
+        assert_eq!(args.input, SearchInput::Stdin);
     }
 
     #[test]
@@ -1653,6 +1733,56 @@ mod tests {
                 "query",
             ],
             &["search", "--data-dir", "data", "--unknown", "query"],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "query",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "--ids",
+                "1,2",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "lexical",
+                "--image",
+                "image.png",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "hybrid",
+                "--image",
+                "image.png",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--image",
+                "image.png",
+                "--vision-tokens",
+                "100",
+            ],
         ] {
             let error = parse_args(args).expect_err("invalid search arguments must fail");
             assert!(matches!(error, Error::Usage(_)), "args {args:?}: {error}");
@@ -1808,6 +1938,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),
             &mut output,
@@ -1843,6 +1975,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text(String::new()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
             &mut output,
@@ -1863,6 +1997,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
             &mut output,
@@ -1995,6 +2131,8 @@ mod tests {
                 offset: 0,
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
+                image: None,
+                vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),
             &mut output,

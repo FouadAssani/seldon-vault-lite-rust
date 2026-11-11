@@ -137,7 +137,8 @@ the delivered binary never runs them.
   with modality image, indexed with empty chunk text, and searched by exact
   vector search. An end-to-end test indexes one image and retrieves it with a
   text query. A two-image ranking test ranks a colorful quadrant image above a
-  grayscale image for the query "a colorful four-quadrant test pattern".
-  Broader text-to-image ranking quality and image-to-image ranking remain
-  pending. No image modality is declared supported end to end until those
-  paths are tested.
+  grayscale image for the text query "a colorful four-quadrant test pattern";
+  an image query with the quadrant image ranks the identical image first and
+  the grayscale image second. Broader ranking quality remains pending. No
+  image modality is declared supported end to end until those paths are
+  tested.

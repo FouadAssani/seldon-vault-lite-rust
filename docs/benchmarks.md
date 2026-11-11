@@ -123,7 +123,8 @@ The end-to-end CLI path (index one image at 70 tokens, then retrieve it with a
 text vector query) takes about 100 s in the test profile. That measurement
 includes model loading, preprocessing, the vision tower, one image embedding,
 the text query embedding, and the journal write. The two-image ranking test
-(index two images and run a text vector query) takes about 176 s.
+(index two images, run a text vector query, then run an image vector query)
+takes about 271 s.
 
 No intra-request parallelism, batching, or SIMD is implemented at M4. M7 must
 profile the image path before optimizing, compare every change with the image

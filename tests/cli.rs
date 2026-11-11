@@ -240,7 +240,7 @@ fn indexes_an_image_and_finds_it_with_a_text_query() {
 
 #[test]
 #[ignore = "loads the full multimodal model and embeds two images with the scalar vision tower"]
-fn text_query_ranks_image_documents() {
+fn text_and_image_queries_rank_image_documents() {
     use std::fs;
 
     let unique = format!(
@@ -303,6 +303,40 @@ fn text_query_ranks_image_documents() {
     assert_eq!(
         hits[0].get("modality").and_then(|value| value.as_str()),
         Some("image")
+    );
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--mode",
+        "vector",
+        "--dim",
+        "768",
+        "--vision-tokens",
+        "70",
+        "--image",
+        "fixtures/media/quadrants_16x16.png",
+    ]);
+    assert!(
+        output.status.success(),
+        "image search stderr: {}",
+        stderr(&output)
+    );
+    let result =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("image search must be JSON");
+    let hits = result
+        .as_array()
+        .expect("image search output is a hits array");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].get("document_id").and_then(|value| value.as_str()),
+        Some("img-quadrants"),
+        "the identical image must rank first"
+    );
+    assert_eq!(
+        hits[1].get("document_id").and_then(|value| value.as_str()),
+        Some("img-gray")
     );
 
     let _ = fs::remove_dir_all(&dir);
