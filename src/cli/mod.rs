@@ -22,8 +22,8 @@ use crate::index::{Filters, Index, SearchHit, SearchMode, SearchRequest};
 use crate::json::{self, Number, Object, Value};
 use crate::model::prompt::Prompt;
 use crate::model::text::{TextEmbedder, TextModel};
-use crate::storage::Store;
 use crate::storage::model::{ChunkInput, Document, DocumentId, Metadata, Modality};
+use crate::storage::{ReadOnlyStore, Store};
 use crate::{MODEL_CACHE_DIR, MODEL_REVISION, PROGRAM_NAME, TARGET_TRIPLE, VERSION};
 
 /// Maximum number of bytes read from standard input.
@@ -52,6 +52,7 @@ COMMANDS:
     index      Ingests JSONL documents into the persistent store
     search     Runs hybrid, lexical, or exact vector search
     verify     Verifies a data directory without modifying it
+    compact    Materializes a snapshot and replaces the journal
     version    Prints the version and build target
     help       Prints this help
 
@@ -103,9 +104,17 @@ SEARCH:
 VERIFY:
     verify --data-dir <DIR>
 
-    Decodes and validates the committed journal prefix, reporting records,
-    documents, chunks, and any uncommitted trailing bytes. The journal is not
-    modified.
+    Decodes and validates the committed snapshot and journal prefix, reporting
+    records, snapshot records, documents, chunks, and any uncommitted trailing
+    bytes. Neither file is modified.
+
+COMPACT:
+    compact --data-dir <DIR>
+
+    Materializes the current documents and chunks into snapshot.sv, then
+    replaces journal.log with an empty file. The snapshot is written and
+    synchronized before the journal is replaced, so a crash leaves a
+    recoverable state.
 
 OPTIONS:
     -V, --version    Equivalent to version
@@ -136,6 +145,8 @@ pub enum Command {
     Search(SearchArgs),
     /// Verifies a data directory.
     Verify(VerifyArgs),
+    /// Materializes a snapshot and compacts the journal.
+    Compact(CompactArgs),
 }
 
 /// Arguments of the embed command.
@@ -217,6 +228,13 @@ pub struct VerifyArgs {
     pub data_dir: PathBuf,
 }
 
+/// Arguments of the compact command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactArgs {
+    /// Data directory.
+    pub data_dir: PathBuf,
+}
+
 /// Default model directory for the frozen revision.
 pub fn default_model_dir() -> PathBuf {
     Path::new(MODEL_CACHE_DIR).join(MODEL_REVISION)
@@ -263,6 +281,7 @@ where
         "index" => parse_index(rest),
         "search" => parse_search(rest),
         "verify" => parse_verify(rest),
+        "compact" => parse_compact(rest),
         other => Err(Error::usage(format!("unknown command {other}; use --help"))),
     }
 }
@@ -583,6 +602,31 @@ fn parse_verify(args: Vec<String>) -> Result<Command> {
     Ok(Command::Verify(VerifyArgs { data_dir }))
 }
 
+fn parse_compact(args: Vec<String>) -> Result<Command> {
+    let mut data_dir = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "-h" | "--help" => return Ok(Command::Help),
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => {
+                return Err(Error::usage(format!(
+                    "unexpected argument {other}; compact accepts only --data-dir"
+                )));
+            }
+        }
+        index += 1;
+    }
+    let data_dir = data_dir.ok_or_else(|| Error::usage("compact requires --data-dir <DIR>"))?;
+    Ok(Command::Compact(CompactArgs { data_dir }))
+}
+
 /// Executes a command and writes its output to stdout.
 ///
 /// # Errors
@@ -597,6 +641,7 @@ pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
         Command::Index(args) => run_index(args, stdout)?,
         Command::Search(args) => run_search(args, stdout)?,
         Command::Verify(args) => run_verify(args, stdout)?,
+        Command::Compact(args) => run_compact(args, stdout)?,
     }
     stdout.flush()?;
     Ok(())
@@ -724,8 +769,8 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
         )));
     }
 
-    let store = Store::open(&args.data_dir)?;
-    let index = Index::build(&store)?;
+    let store = ReadOnlyStore::open(&args.data_dir)?;
+    let index = Index::build_read_only(&store)?;
 
     let embedding = if args.mode == SearchMode::Lexical {
         None
@@ -761,6 +806,10 @@ fn run_verify<W: Write>(args: VerifyArgs, stdout: &mut W) -> Result<()> {
         Value::Number(Number::Unsigned(verification.records)),
     );
     object.insert(
+        "snapshot_records".to_owned(),
+        Value::Number(Number::Unsigned(verification.snapshot_records)),
+    );
+    object.insert(
         "documents".to_owned(),
         Value::Number(Number::Unsigned(verification.documents as u64)),
     );
@@ -771,6 +820,33 @@ fn run_verify<W: Write>(args: VerifyArgs, stdout: &mut W) -> Result<()> {
     object.insert(
         "truncated_bytes".to_owned(),
         Value::Number(Number::Unsigned(verification.truncated_bytes)),
+    );
+    object.insert(
+        "data_dir".to_owned(),
+        Value::String(args.data_dir.display().to_string()),
+    );
+    write_json(stdout, &Value::Object(object))
+}
+
+fn run_compact<W: Write>(args: CompactArgs, stdout: &mut W) -> Result<()> {
+    let mut store = Store::open(&args.data_dir)?;
+    let compaction = store.compact()?;
+    let mut object = Object::new();
+    object.insert(
+        "snapshot_records".to_owned(),
+        Value::Number(Number::Unsigned(compaction.snapshot_records)),
+    );
+    object.insert(
+        "snapshot_bytes".to_owned(),
+        Value::Number(Number::Unsigned(compaction.snapshot_bytes)),
+    );
+    object.insert(
+        "documents".to_owned(),
+        Value::Number(Number::Unsigned(compaction.documents as u64)),
+    );
+    object.insert(
+        "chunks".to_owned(),
+        Value::Number(Number::Unsigned(compaction.chunks as u64)),
     );
     object.insert(
         "data_dir".to_owned(),
@@ -1366,6 +1442,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_compact_arguments() {
+        match parse_args(&["compact", "--data-dir", "data"]).expect("compact") {
+            Command::Compact(args) => assert_eq!(args.data_dir, PathBuf::from("data")),
+            other => panic!("expected compact, got {other:?}"),
+        }
+        let error = parse_args(&["compact"]).expect_err("data dir required");
+        assert!(matches!(error, Error::Usage(_)));
+        let error =
+            parse_args(&["compact", "--data-dir", "data", "extra"]).expect_err("extra argument");
+        assert!(matches!(error, Error::Usage(_)));
+    }
+
+    #[test]
     fn version_output_is_stable() {
         let mut output = Vec::new();
         run(Command::Version, &mut output).expect("writing must succeed");
@@ -1588,6 +1677,100 @@ mod tests {
                 .and_then(Number::as_u64),
             Some(0)
         );
+        assert_eq!(
+            verification
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(0)
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Compact(CompactArgs {
+                data_dir: data_dir.clone(),
+            }),
+            &mut output,
+        )
+        .expect("compact must succeed");
+        let compaction =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("compaction JSON");
+        assert_eq!(
+            compaction
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            compaction
+                .get("documents")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            compaction
+                .get("chunks")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert!(
+            compaction
+                .get("snapshot_bytes")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64)
+                .unwrap_or(0)
+                > 0
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Verify(VerifyArgs {
+                data_dir: data_dir.clone(),
+            }),
+            &mut output,
+        )
+        .expect("verify after compact");
+        let verification = json::parse(String::from_utf8(output).expect("UTF-8").trim())
+            .expect("verification JSON");
+        assert_eq!(
+            verification
+                .get("records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            verification
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+
+        let writer = Store::open(&data_dir).expect("writer stays open");
+        let mut output = Vec::new();
+        run(
+            Command::Search(SearchArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                mode: SearchMode::Lexical,
+                limit: 10,
+                offset: 0,
+                filters: Filters::new(),
+                input: SearchInput::Text("rust".to_owned()),
+                ids: None,
+            }),
+            &mut output,
+        )
+        .expect("read-only search while a writer is open");
+        let hits =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("hits JSON");
+        assert_eq!(hits.as_array().expect("array").len(), 2);
+        drop(writer);
 
         let _ = fs::remove_dir_all(&dir);
     }
