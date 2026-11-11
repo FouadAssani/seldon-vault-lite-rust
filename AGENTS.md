@@ -1,102 +1,103 @@
 # AGENTS.md — Seldon Vault Lite
 
-**Projet :** moteur d'embeddings, d'indexation et de recherche multimodale local, 100 % Rust, sans dépendance tierce, spécialisé pour `google/embeddinggemma-2`.
-**Document de référence :** [`plan-seldon-vault-lite-rust-pur.md`](plan-seldon-vault-lite-rust-pur.md). En cas de doute ou de conflit, le plan fait foi. Ce fichier en est le résumé opérationnel destiné aux agents de codage et aux contributeurs.
+**Project:** local multimodal embedding, indexing, and search engine, 100% Rust, with no third-party dependencies, specialized for `google/embeddinggemma-2`.
+**Reference document:** [`seldon-vault-lite-plan.md`](seldon-vault-lite-plan.md). In case of doubt or conflict, the plan is authoritative. This file is the operational summary intended for coding agents and contributors.
+**Language:** English only. All project artifacts — documentation, ADRs, code comments, commit messages, CLI help, API messages, and test names — are written in English. Vendored third-party skills under `.dsh/skills/` are exempt.
 
-## 0. Règle d'or
+## 0. Golden rule
 
-Une étape n'est terminée que si **ses tests réussissent, que ses résultats sont reproductibles et qu'aucune régression du périmètre déjà validé n'est constatée**. Une compilation qui réussit n'est pas une preuve. Ne jamais déclarer une modalité « prise en charge » si elle ne renvoie qu'un vecteur calculé à partir d'un nom de fichier ou d'un marqueur textuel.
+A step is complete only if **its tests pass, its results are reproducible, and no regression is observed in the scope already validated**. A successful compilation is not proof. Never declare a modality "supported" if it only returns a vector computed from a file name or a textual marker.
 
-État constaté à la rédaction (2026-11-11) : le dépôt contient le plan, le README et les skills Rust présents dans `.dsh/skills/` ; il n'y a encore ni `Cargo.toml` ni `src/`. Le premier travail est le jalon **M0**.
+State at the time of writing (2026-11-11): the repository contains the plan, the README, and the Rust skills in `.dsh/skills/`; there is still no `Cargo.toml` and no `src/`. The first task is milestone **M0**.
 
-## 1. Mission et périmètre
+## 1. Mission and scope
 
-- Texte et code : embeddings de requêtes et de documents.
-- Images : PNG et JPEG, prétraitement et encodeur visuel natifs.
-- Audio : WAV PCM d'abord, puis MP3 seulement si la matrice finale des formats l'exige ; encodage audio natif, **sans transcription**.
-- Embeddings intermodaux comparables : texte ↔ image, texte ↔ audio, médias ↔ médias.
-- Dimensions 768, 512, 256 et 128, avec **renormalisation après troncature**.
-- Documents, métadonnées, filtres, indexation persistante, recherche hybride.
-- API HTTP locale, contrôle des ressources, diagnostic, arrêt propre, reprise après interruption.
-- **Hors périmètre :** LLM génératif, transcription, GPU, orchestration externe.
+- Text and code: query and document embeddings.
+- Images: PNG and JPEG, native preprocessing and visual encoder.
+- Audio: WAV PCM first, then MP3 only if the final format matrix requires it; native audio encoding, **no transcription**.
+- Comparable cross-modal embeddings: text ↔ image, text ↔ audio, media ↔ media.
+- Dimensions 768, 512, 256, and 128, with **renormalization after truncation**.
+- Documents, metadata, filters, persistent indexing, hybrid search.
+- Local HTTP API, resource control, diagnostics, clean shutdown, recovery after interruption.
+- **Out of scope:** generative LLM, transcription, GPU, external orchestration.
 
-## 2. Contrat technique — non négociable
+## 2. Technical contract — non-negotiable
 
-| Règle | Conséquence pratique | Vérification |
+| Rule | Practical consequence | Verification |
 |---|---|---|
-| **Zéro crate tierce** | Aucune entrée dans `[dependencies]`, `[dev-dependencies]` ou `[build-dependencies]`. Seuls `std` et les intrinsics de `core::arch` sont autorisés. | `cargo tree --edges normal,build,dev` ne doit afficher que le crate racine. |
-| **Code produit 100 % Rust** | Pas de C, C++, Go, Python, assembleur externe, FFI ni bibliothèque applicative dynamique. Les outils de comparaison/référence restent **en laboratoire uniquement**. | Revue du code et `otool -L` sur le binaire final. |
-| **Zéro moteur d'inférence externe** | Ni llama.cpp, Candle, ONNX Runtime, PyTorch, ni serveur d'inférence. | Aucun processus auxiliaire lancé par le produit. |
-| **Zéro base de données externe** | Ni SQLite ni serveur DB : stockage, journal, index vectoriel et recherche textuelle sont écrits en Rust. | Aucune dépendance de stockage dans le graphe Cargo. |
-| **Zéro réseau requis à l'exécution** | Fonctionne hors ligne, sans clé ni téléchargement. | Test sur machine propre et hors ligne. |
-| **`unsafe` justifié uniquement** | Interdit dans les parseurs et le code métier. Autorisé pour les kernels SIMD `core::arch`, avec commentaire `// SAFETY:`, wrapper sûr et chemin scalaire équivalent testé. | Revue ligne par ligne de chaque bloc `unsafe`. |
-| **Précision** | Activations en **FP32** ; poids BF16 acceptés ; **FP16 interdit pour les activations**. | Types et tests de parité. |
-| **Pas de panique sur entrée hostile** | Pas de `unwrap()`/`expect()` sur une entrée externe ; erreurs typées et propagées avec `?`. `expect()` réservé aux invariants démontrés ; `unwrap()` toléré dans les tests. | `cargo clippy`, revue, tests de corruption. |
-| **Bornes mémoire explicites** | Toute allocation issue d'une entrée externe est plafonnée (dimensions, pixels, taille décompressée, corps HTTP, file d'ingestion, pool de threads). | Tests de tailles extrêmes et de bombes de décompression. |
-| **Déterminisme** | Le chemin scalaire FP32 est la référence de correction ; toute optimisation doit rester dans les tolérances. | Golden tests rejoués après chaque optimisation. |
-| **Pas de cible macOS Intel** | Phase 1 : `aarch64-apple-darwin` uniquement. Aucune compilation ni validation `x86_64-apple-darwin`. | `rustup target list`, scripts de build. |
+| **Zero third-party crates** | No entries in `[dependencies]`, `[dev-dependencies]`, or `[build-dependencies]`. Only `std` and `core::arch` intrinsics are allowed. | `cargo tree --edges normal,build,dev` must show only the root crate. |
+| **100% Rust product code** | No C, C++, Go, Python, external assembly, FFI, or dynamic application library. Comparison/reference tools remain **laboratory-only**. | Code review and `otool -L` on the final binary. |
+| **Zero external inference engine** | No llama.cpp, Candle, ONNX Runtime, PyTorch, or inference server. | No auxiliary process launched by the product. |
+| **Zero external database** | No SQLite or DB server: storage, journal, vector index, and text search are written in Rust. | No storage dependency in the Cargo graph. |
+| **Zero network required at runtime** | Works offline, without a key or download. | Test on a clean, offline machine. |
+| **`unsafe` justified only** | Forbidden in parsers and business code. Allowed for `core::arch` SIMD kernels, with a `// SAFETY:` comment, a safe wrapper, and an equivalent tested scalar path. | Line-by-line review of every `unsafe` block. |
+| **Precision** | Activations in **FP32**; BF16 weights accepted; **FP16 forbidden for activations**. | Types and parity tests. |
+| **No panic on hostile input** | No `unwrap()`/`expect()` on external input; typed errors propagated with `?`. `expect()` reserved for proven invariants; `unwrap()` tolerated in tests. | `cargo clippy`, review, corruption tests. |
+| **Explicit memory bounds** | Every allocation derived from external input is capped (dimensions, pixels, decompressed size, HTTP body, ingestion queue, thread pool). | Extreme-size and decompression-bomb tests. |
+| **Determinism** | The FP32 scalar path is the correctness reference; any optimization must stay within tolerances. | Golden tests replayed after each optimization. |
+| **No Intel macOS target** | Phase 1: `aarch64-apple-darwin` only. No compilation or validation for `x86_64-apple-darwin`. | `rustup target list`, build scripts. |
 
-## 3. Cibles de compilation
+## 3. Build targets
 
-1. **Phase 1 (unique cible initiale) :** `aarch64-apple-darwin`, macOS 11 ou ultérieur selon les capacités réellement utilisées. Vérifier le `MACOSX_DEPLOYMENT_TARGET` effectif du binaire.
-2. **Phase 2 (portage Linux) :** `x86_64-unknown-linux-musl`, puis `aarch64-unknown-linux-musl`, en statique.
-3. **Exclu :** `x86_64-apple-darwin` (Mac Intel). Aucune promesse de binaire universel.
+1. **Phase 1 (single initial target):** `aarch64-apple-darwin`, macOS 11 or later depending on the capabilities actually used. Verify the binary's effective `MACOSX_DEPLOYMENT_TARGET`.
+2. **Phase 2 (Linux port):** `x86_64-unknown-linux-musl`, then `aarch64-unknown-linux-musl`, statically linked.
+3. **Excluded:** `x86_64-apple-darwin` (Intel Mac). No universal binary promise.
 
-## 4. Arborescence cible
+## 4. Target tree
 
 ```text
 seldon-vault-lite/
-├── Cargo.toml                 # zéro dépendance
+├── Cargo.toml                 # zero dependencies
 ├── Cargo.lock
 ├── README.md
 ├── AGENTS.md
 ├── docs/
-│   ├── adr/                   # décisions : std seul, formats, persistance, unsafe, modèle
+│   ├── adr/                   # decisions: std only, formats, persistence, unsafe, model
 │   ├── architecture.md
 │   ├── model-parity.md
 │   ├── api.md
 │   └── formats.md
 ├── src/
 │   ├── main.rs
-│   ├── api/                   # HTTP/1.1 + JSON natifs
+│   ├── api/                   # native HTTP/1.1 + JSON
 │   ├── cli/                   # serve, embed, index, search, verify, version
-│   ├── binary/                # Safetensors, en-têtes, checksums
-│   ├── tensor/                # kernels scalaires et SIMD
+│   ├── binary/                # Safetensors, headers, checksums
+│   ├── tensor/                # scalar and SIMD kernels
 │   ├── model/                 # tokenizer, EmbeddingGemma 2
-│   ├── media/                 # PNG, JPEG, WAV, MP3 éventuel
-│   ├── index/                 # BM25, KNN exact, HNSW éventuel, RRF
+│   ├── media/                 # PNG, JPEG, WAV, optional MP3
+│   ├── index/                 # BM25, exact KNN, optional HNSW, RRF
 │   ├── storage/               # journal, snapshots, transactions
 │   ├── jobs/
 │   └── error.rs
-├── tests/                     # tests Rust std seulement
-├── fixtures/                  # golden tests compacts
+├── tests/                     # Rust std tests only
+├── fixtures/                  # compact golden tests
 └── tools/
-    └── model-packer/          # Rust std seulement, utilisé au build
+    └── model-packer/          # Rust std only, used at build time
 ```
 
-Créer les modules au fur et à mesure des jalons, pas en avance et vides. Chaque module public documenté avec `///` ou `//!`.
+Create modules as milestones progress, not ahead of time and empty. Every public module is documented with `///` or `//!`.
 
-## 5. Boucle de travail
+## 5. Work loop
 
-1. Lire le plan, l'ADR concerné et la documentation du module avant de modifier du code.
-2. Identifier le jalon courant (M0–M9) et la plus petite étape vérifiable à réaliser.
-3. Écrire ou compléter les **golden tests** et les fixtures avant l'implémentation.
-4. Implémenter d'abord la voie scalaire de référence, puis optimiser seulement après concordance.
-5. Exécuter la vérification complète ci-dessous.
-6. Mettre à jour l'ADR/la documentation et consigner les résultats de benchmark si l'étape touche aux performances.
-7. Committer avec un message de type `type(scope): résumé` et mentionner le jalon.
+1. Read the plan, the relevant ADR, and the module documentation before changing code.
+2. Identify the current milestone (M0–M9) and the smallest verifiable step to perform.
+3. Write or complete the **golden tests** and fixtures before implementation.
+4. Implement the scalar reference path first, then optimize only after agreement.
+5. Run the full verification below.
+6. Update the ADR/documentation and record benchmark results if the step affects performance.
+7. Commit with a message of the form `type(scope): summary` and mention the milestone.
 
-Ne jamais sauter l'étape de tests pour « gagner du temps », ni fusionner une optimisation non validée.
+Never skip the test step to "save time", and never merge an unvalidated optimization.
 
-### Point de départ — M0
+### Starting point — M0
 
-- [ ] Créer `Cargo.toml` sans aucune dépendance et un `src/main.rs` compilable avec une CLI minimale (`version`).
-- [ ] Rédiger l'ADR fondateur : `std` seul, formats, données persistantes, politique d'`unsafe`, version du modèle et compatibilité.
-- [ ] Consigner les invariants : pas de crash sur entrée hostile, bornes mémoire explicites, pas d'`unwrap()` sur entrée externe, déterminisme des calculs scalaires.
-- [ ] Créer l'arborescence `docs/`, `src/`, `tests/`, `fixtures/` et `tools/model-packer/` sans modules vides inutiles.
-- [ ] Vérifier le graphe Cargo vide, compiler pour `aarch64-apple-darwin` et contrôler les bibliothèques liées.
+- [ ] Create `Cargo.toml` with no dependencies and a compilable `src/main.rs` with a minimal CLI (`version`).
+- [ ] Write the founding ADR: `std` only, formats, persistent data, `unsafe` policy, model version, and compatibility.
+- [ ] Record the invariants: no crash on hostile input, explicit memory bounds, no `unwrap()` on external input, deterministic scalar computations.
+- [ ] Create the `docs/`, `src/`, `tests/`, `fixtures/`, and `tools/model-packer/` tree without unnecessary empty modules.
+- [ ] Verify the empty Cargo graph, build for `aarch64-apple-darwin`, and check linked libraries.
 
-## 6. Commandes de vérification
+## 6. Verification commands
 
 ```bash
 cargo fmt --check
@@ -104,140 +105,140 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 cargo build --release --target aarch64-apple-darwin
 
-# Contrat « zéro crate » : la sortie ne doit contenir que le crate racine.
+# "Zero crate" contract: the output must contain only the root crate.
 cargo tree --edges normal,build,dev
 
-# Bibliothèques liées : uniquement les bibliothèques système macOS.
+# Linked libraries: macOS system libraries only.
 otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
 
-# Version de déploiement réellement enregistrée dans le Mach-O.
+# Deployment version actually recorded in the Mach-O.
 vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
 ```
 
-`rustup target add aarch64-apple-darwin` est un outil de développement autorisé. Aucun de ces outils ne fait partie du produit livré.
+`rustup target add aarch64-apple-darwin` is an allowed development tool. None of these tools is part of the delivered product.
 
-## 7. Règles de code Rust
+## 7. Rust code rules
 
-- **Formatage et lint :** `rustfmt` et `clippy` avec `-D warnings`. Aucun avertissement ignoré sans justification écrite.
-- **Nommage :** `snake_case` pour fonctions/variables, `CamelCase` pour types, `SCREAMING_CASE` pour constantes. Pas de préfixe `get_` ; `as_`/`to_`/`into_` selon le coût de conversion.
-- **Types :** newtypes pour les identifiants et unités du domaine (`DocumentId`, `Dimension`, `TokenId`), plutôt que des `String`/`usize` nus. Rendre les états invalides impossibles à représenter quand c'est raisonnable.
-- **Allocations :** `Vec::with_capacity` quand la taille est connue ; tampons d'activations réutilisables par couche ; pas de copie implicite cachée dans les hot paths ; pas de `clone()` réflexe.
-- **Erreurs :** type d'erreur central dans `src/error.rs`, implémentation manuelle de `std::error::Error`, propagation avec `?`. Distinguer erreur utilisateur, entrée corrompue, limite dépassée et erreur interne.
-- **Invariants :** valider formes, indices, décalages, longueurs et débordements avant tout accès. Utiliser `checked_*`/`saturating_*` quand l'arithmétique peut déborder.
-- **Concurrence :** `std::thread` uniquement ; pool borné, arrêt coopératif, ordre de verrouillage documenté, pas de verrou tenu pendant une opération longue ou un I/O bloquant.
-- **SIMD :** détection des capacités CPU à l'exécution ; NEON pour macOS ARM64 ; AVX2/FMA seulement au portage Linux x86-64 ; fallback scalaire obligatoire ; tests différentiels scalaire vs SIMD.
-- **Documentation :** expliquer le *pourquoi* (format, contrainte, tolérance), pas seulement le *quoi*. Chaque `unsafe` porte un commentaire `// SAFETY:` vérifiable.
+- **Formatting and lint:** `rustfmt` and `clippy` with `-D warnings`. No ignored warning without written justification.
+- **Naming:** `snake_case` for functions/variables, `CamelCase` for types, `SCREAMING_CASE` for constants. No `get_` prefix; `as_`/`to_`/`into_` depending on conversion cost.
+- **Types:** newtypes for domain identifiers and units (`DocumentId`, `Dimension`, `TokenId`) rather than bare `String`/`usize`. Make invalid states unrepresentable when reasonable.
+- **Allocations:** `Vec::with_capacity` when the size is known; activation buffers reused per layer; no hidden implicit copies in hot paths; no reflex `clone()`.
+- **Errors:** central error type in `src/error.rs`, manual implementation of `std::error::Error`, propagation with `?`. Distinguish user error, corrupted input, limit exceeded, and internal error.
+- **Invariants:** validate shapes, indices, offsets, lengths, and overflows before any access. Use `checked_*`/`saturating_*` when arithmetic can overflow.
+- **Concurrency:** `std::thread` only; bounded pool, cooperative shutdown, documented lock order, no lock held during a long operation or blocking I/O.
+- **SIMD:** runtime CPU capability detection; NEON for macOS ARM64; AVX2/FMA only in the Linux x86-64 port; mandatory scalar fallback; scalar vs SIMD differential tests.
+- **Documentation:** explain the *why* (format, constraint, tolerance), not just the *what*. Every `unsafe` carries a verifiable `// SAFETY:` comment.
 
-> Les conseils Rust génériques qui supposent des crates (`thiserror`, `anyhow`, `tokio`, `crossbeam`, `parking_lot`, `serde`, `clap`, `axum`, etc.) **ne s'appliquent pas ici** : tout doit être implémenté avec `std`. Les skills Rust présents dans `.dsh/skills/` peuvent aider pour l'ownership, les erreurs, la concurrence ou l'`unsafe`, mais leurs recommandations de dépendances sont à ignorer.
+> Generic Rust advice that assumes crates (`thiserror`, `anyhow`, `tokio`, `crossbeam`, `parking_lot`, `serde`, `clap`, `axum`, etc.) **does not apply here**: everything must be implemented with `std`. The Rust skills in `.dsh/skills/` can help with ownership, errors, concurrency, or `unsafe`, but their dependency recommendations must be ignored.
 
-## 8. Modèle et parité numérique
+## 8. Model and numerical parity
 
-- **Figer** `google/embeddinggemma-2` sur une révision précise et enregistrer les SHA-256 de **tous** les fichiers utilisés dans un manifeste versionné.
-- **Inventorier** couches, dimensions, types numériques, tenseurs attendus et noms des poids. Ne pas supposer qu'un « Gemma 4 » générique est compatible : relever les éléments non standards dans les sources officielles.
-- **Golden tests** construits hors du produit avec l'implémentation officielle : token IDs, sorties intermédiaires de couches et vecteurs finaux pour français/anglais, code, chaînes vides/Unicode, images variées et extraits WAV.
-- **Fixtures** compactes, versionnées, avec provenance et empreintes. **Ne jamais committer les poids géants** dans Git.
-- **Tolérances distinctes :** égalité exacte pour la tokenisation et les dimensions ; tolérance absolue/relative pour les tenseurs FP32 ; cosinus et rang de recherche pour les embeddings quantifiés.
-- **Tokenisation :** reproduire exactement la variante déclarée par le modèle (normalisation, espaces, UTF-8, tokens spéciaux, padding, masques, limites contextuelles). Toute divergence de token IDs **bloque** l'intégration des couches d'inférence.
-- **Prompts :** préfixes `SearchQuery`, `Document`, similarité et classification selon les configurations officielles ; préserver les titres des documents ; distinguer explicitement requête et document indexé.
-- **Texte :** 24 couches, fenêtre glissante, pooling et projection 512 → 768 conformes, normalisation L2, dimensions Matryoshka 768/512/256/128 avec **renormalisation après réduction**.
-- **Images :** décodeurs PNG (DEFLATE/zlib natif) et JPEG écrits en Rust ; plafonds stricts sur dimensions, pixels, mémoire décompressée et temps ; prétraitement officiel reproduit (couleur, redimensionnement, patches, positions, budget de tokens).
-- **Audio :** WAV/RIFF PCM avec conversions et rééchantillonnage natifs ; prétraitement officiel reproduit après inspection du processeur officiel ; MP3 natif seulement s'il est requis, avec les mêmes limites et fixtures. **Pas de Whisper, pas de transcription.**
-- **Intermodalité :** texte, image et audio doivent partager le même espace d'embedding et être comparables.
+- **Freeze** `google/embeddinggemma-2` at a precise revision and record the SHA-256 of **all** files used in a versioned manifest.
+- **Inventory** layers, dimensions, numeric types, expected tensors, and weight names. Do not assume a generic "Gemma 4" is compatible: note non-standard elements in the official sources.
+- **Golden tests** built outside the product with the official implementation: token IDs, intermediate layer outputs, and final vectors for French/English, code, empty/Unicode strings, varied images, and WAV excerpts.
+- **Fixtures** compact, versioned, with provenance and fingerprints. **Never commit giant weights** to Git.
+- **Distinct tolerances:** exact equality for tokenization and dimensions; absolute/relative tolerance for FP32 tensors; cosine and search rank for quantized embeddings.
+- **Tokenization:** reproduce exactly the variant declared by the model (normalization, spaces, UTF-8, special tokens, padding, masks, context limits). Any token ID divergence **blocks** the integration of inference layers.
+- **Prompts:** `SearchQuery`, `Document`, similarity, and classification prefixes per the official configurations; preserve document titles; explicitly distinguish query from indexed document.
+- **Text:** 24 layers, sliding window, compliant pooling and 512 → 768 projection, L2 normalization, Matryoshka dimensions 768/512/256/128 with **renormalization after reduction**.
+- **Images:** PNG (native DEFLATE/zlib) and JPEG decoders written in Rust; strict caps on dimensions, pixels, decompressed memory, and time; official preprocessing reproduced (color, resizing, patches, positions, token budget).
+- **Audio:** WAV/RIFF PCM with native conversions and resampling; official preprocessing reproduced after inspecting the official processor; native MP3 only if required, with the same limits and fixtures. **No Whisper, no transcription.**
+- **Cross-modality:** text, image, and audio must share the same embedding space and be comparable.
 
-## 9. Stockage, index et API
+## 9. Storage, index, and API
 
-### Stockage
+### Storage
 
-- Modèle explicite : documents, chunks, vecteurs, modalités, sources, ACL/filtres, métadonnées ; IDs stables et versions de schéma.
-- Format portable : enregistrements cadrés, longueurs bornées, checksums, version.
-- Journal append-only : commit atomique, `fsync` aux points critiques, replay déterministe, récupération après arrêt brutal.
-- Snapshots, compactage sûr, verrouillage des writers, lectures concurrentes.
-- Tests de crash injecté à **chaque** étape d'écriture ; reprise identique ; absence de doublons et de pertes.
+- Explicit model: documents, chunks, vectors, modalities, sources, ACLs/filters, metadata; stable IDs and schema versions.
+- Portable format: framed records, bounded lengths, checksums, version.
+- Append-only journal: atomic commit, `fsync` at critical points, deterministic replay, recovery after a brutal stop.
+- Snapshots, safe compaction, writer locking, concurrent reads.
+- Crash-injection tests at **every** write step; identical recovery; no duplicates and no losses.
 
 ### Index
 
-- Index lexical inversé avec BM25, normalisation et filtres.
-- Recherche vectorielle **exacte** (cosinus/dot product normalisé) comme oracle de correction.
-- HNSW natif seulement après mesures de volume et de latence, comparé à l'oracle exact.
-- Fusion hybride RRF (lexical + vectoriel), pagination, suppressions cohérentes et scores déterministes.
+- Inverted lexical index with BM25, normalization, and filters.
+- **Exact** vector search (cosine/normalized dot product) as the correctness oracle.
+- Native HNSW only after volume and latency measurements, compared with the exact oracle.
+- Hybrid RRF fusion (lexical + vector), pagination, consistent deletions, and deterministic scores.
 
-### API HTTP et CLI
+### HTTP API and CLI
 
-- Serveur `std::net::TcpListener` HTTP/1.1 : parsing strict, connexions bornées, timeouts, `Content-Length` validé, taille maximale des corps.
-- JSON produit par le parseur interne ; codes HTTP et erreurs documentés.
-- Routes : `GET /health`, `GET /ready`, `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/documents`, `DELETE /v1/documents/{id}`, `POST /v1/search`, `GET /v1/jobs/{id}`.
-- File d'ingestion bornée, limitation de concurrence, annulations, arrêt gracieux, observabilité locale.
-- Liaison par défaut à `127.0.0.1`. Pour le LAN : configuration explicite, jeton d'accès, limites strictes. Sans TLS externe, **ne pas exposer directement à Internet**.
-- CLI natif : `serve`, `embed`, `index`, `search`, `verify`, `version`. Aucun processus auxiliaire.
+- `std::net::TcpListener` HTTP/1.1 server: strict parsing, bounded connections, timeouts, validated `Content-Length`, maximum body size.
+- JSON produced by the internal parser; documented HTTP codes and errors.
+- Routes: `GET /health`, `GET /ready`, `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/documents`, `DELETE /v1/documents/{id}`, `POST /v1/search`, `GET /v1/jobs/{id}`.
+- Bounded ingestion queue, concurrency limiting, cancellations, graceful shutdown, local observability.
+- Default binding to `127.0.0.1`. For LAN: explicit configuration, access token, strict limits. Without external TLS, **do not expose directly to the Internet**.
+- Native CLI: `serve`, `embed`, `index`, `search`, `verify`, `version`. No auxiliary process.
 
-## 10. Tests et définition de « terminé »
+## 10. Tests and definition of "done"
 
-Tests obligatoires avant diffusion :
+Mandatory tests before release:
 
-- **Correction :** parité token IDs, calculs intermédiaires et vecteurs finaux face aux golden tests.
-- **Multimodal :** texte → image pertinente ; texte → extrait audio ; image ↔ image.
-- **Dimensions :** 128/256/512/768, troncature suivie de normalisation ; même espace pour requêtes et documents.
-- **Persistance :** ingestion, modification, suppression, crash, replay, snapshot, redémarrage, restauration.
-- **Robustesse :** images/audio corrompus, données arbitraires, tailles limites, JSON invalide, annulation, manque de mémoire.
-- **Sécurité :** fuzzing interne avec un générateur de corpus Rust maison ; revue des parseurs et des zones SIMD `unsafe` ; tests d'exposition LAN.
-- **Performance :** p50/p95/p99, RAM résidente, démarrage à froid, débit, scalabilité des vecteurs, CPU saturé.
-- **Distribution :** macOS Apple Silicon uniquement en phase 1 ; aucune crate tierce ; aucune bibliothèque applicative dynamique non autorisée ; modèle inclus ; aucun réseau au runtime ; test sur un Mac propre sans Homebrew, Python ni outil d'inférence.
+- **Correctness:** token ID parity, intermediate computations, and final vectors against golden tests.
+- **Multimodal:** text → relevant image; text → audio excerpt; image ↔ image.
+- **Dimensions:** 128/256/512/768, truncation followed by normalization; same space for queries and documents.
+- **Persistence:** ingestion, modification, deletion, crash, replay, snapshot, restart, restore.
+- **Robustness:** corrupted images/audio, arbitrary data, limit sizes, invalid JSON, cancellation, out of memory.
+- **Security:** internal fuzzing with a home-made Rust corpus generator; review of parsers and `unsafe` SIMD regions; LAN exposure tests.
+- **Performance:** p50/p95/p99, resident RAM, cold start, throughput, vector scalability, saturated CPU.
+- **Distribution:** macOS Apple Silicon only in phase 1; no third-party crates; no unauthorized dynamic application library; model included; no network at runtime; test on a clean Mac without Homebrew, Python, or an inference tool.
 
-**Terminé** signifie : un seul binaire par architecture, validé d'abord sur macOS Apple Silicon, utilisable hors ligne ; embeddings réels texte/image/audio conformes aux références ; recherche hybride persistante ; API documentée et sécurisée pour usage local ; reprise après incident ; performances mesurées ; tests reproductibles ; source lisible et licences respectées. Le portage Linux vient ensuite, sans cible macOS Intel.
+**Done** means: a single binary per architecture, validated first on macOS Apple Silicon, usable offline; real text/image/audio embeddings compliant with references; persistent hybrid search; documented and secure API for local use; recovery after incident; measured performance; reproducible tests; readable source and respected licenses. The Linux port comes next, without an Intel macOS target.
 
-## 11. Performance et packaging
+## 11. Performance and packaging
 
-- **Profiler avant d'optimiser** : tokenisation, prétraitement, matmul, attention, chargement, requêtes simultanées.
-- Prioriser NEON via `core::arch` sur macOS ARM64, avec chemin scalaire conservé. AVX2/FMA seulement sur Linux x86-64. **Pas d'Accelerate ni de Metal** (FFI interdit).
-- Détection des capacités CPU et sélection du kernel à l'exécution, sans instruction illégale sur les anciens processeurs.
-- Blocking/cache locality, parallélisme borné, réutilisation des tampons.
-- Quantification Q8 éventuelle avec accumulations/activations sûres et contrôle de la dérive des embeddings ; ce n'est pas un acquis automatique.
-- À chaque optimisation : vérifier les golden tests et le classement de recherche **avant** de comparer les temps. Archiver les benchmarks avec CPU, compilateur, révision du modèle, mémoire et paramètres.
-- Pendant le développement, garder les fichiers du modèle **hors du binaire**. Le packer final est écrit en Rust `std`, fige poids/tokenizer/processeurs/manifeste dans un conteneur versionné et vérifié, puis est embarqué via `include_bytes!`.
-- Tester les limites réelles du linker Mach-O, du démarrage, de la taille et de la RAM sur Mac Apple Silicon. Les poids BF16 seuls sont de l'ordre de 1,5 Go ; les activations et buffers augmentent la consommation.
-- Vérifier `otool -L` et les scénarios Gatekeeper, sans imposer de compte développeur pour l'usage local.
-- Seules les **données utilisateur, les journaux et les snapshots** sont des fichiers persistants externes. Un binaire unique ne signifie pas zéro écriture disque.
+- **Profile before optimizing**: tokenization, preprocessing, matmul, attention, loading, concurrent requests.
+- Prioritize NEON via `core::arch` on macOS ARM64, keeping a scalar path. AVX2/FMA only on Linux x86-64. **No Accelerate or Metal** (FFI forbidden).
+- CPU capability detection and runtime kernel selection, without illegal instructions on older processors.
+- Blocking/cache locality, bounded parallelism, buffer reuse.
+- Possible Q8 quantization with safe accumulations/activations and embedding drift control; this is not a given.
+- At each optimization: verify golden tests and search ranking **before** comparing times. Archive benchmarks with CPU, compiler, model revision, memory, and parameters.
+- During development, keep model files **outside the binary**. The final packer is written in Rust `std`, freezes weights/tokenizer/processors/manifest into a versioned and verified container, then is embedded via `include_bytes!`.
+- Test the real limits of the Mach-O linker, startup, size, and RAM on Apple Silicon Mac. BF16 weights alone are on the order of 1.5 GB; activations and buffers increase consumption.
+- Verify `otool -L` and Gatekeeper scenarios, without requiring a developer account for local use.
+- Only **user data, logs, and snapshots** are external persistent files. A single binary does not mean zero disk writes.
 
-## 12. Jalons
+## 12. Milestones
 
-| Jalon | Résultat observable | Débloque |
+| Milestone | Observable result | Unlocks |
 |---|---|---|
-| **M0** | Dépôt Rust `std` uniquement + ADR + jeux de référence + compilation macOS ARM64 | Développement vérifiable sur Apple Silicon |
-| **M1** | Safetensors/JSON/tokenisation + tenseurs FP32 | Première inférence |
-| **M2** | Embeddings texte conformes | Recherche sémantique texte |
-| **M3** | Index/stockage persistants + recherche hybride | Produit utile en texte |
-| **M4** | Images PNG/JPEG et embeddings visuels conformes | Recherche multimodale image |
-| **M5** | WAV et embeddings audio conformes | Recherche multimodale audio |
-| **M6** | API HTTP, jobs et durcissement | Service local complet |
-| **M7** | SIMD NEON et packaging macOS ARM64 vérifiés | Distribution macOS Apple Silicon |
-| **M8** | Tests end-to-end sur Mac propre et documentation finale | Version macOS 1.0 |
-| **M9** | Portage Linux x86-64/ARM64 MUSL, tests et documentation | Version Linux |
+| **M0** | Rust `std`-only repository + ADR + reference datasets + macOS ARM64 build | Verifiable development on Apple Silicon |
+| **M1** | Safetensors/JSON/tokenization + FP32 tensors | First inference |
+| **M2** | Compliant text embeddings | Semantic text search |
+| **M3** | Persistent index/storage + hybrid search | Useful text product |
+| **M4** | PNG/JPEG images and compliant visual embeddings | Multimodal image search |
+| **M5** | WAV and compliant audio embeddings | Multimodal audio search |
+| **M6** | HTTP API, jobs, and hardening | Complete local service |
+| **M7** | NEON SIMD and verified macOS ARM64 packaging | macOS Apple Silicon distribution |
+| **M8** | End-to-end tests on a clean Apple Silicon Mac and final documentation | macOS 1.0 release |
+| **M9** | Linux x86-64/ARM64 MUSL port, tests, and documentation | Linux release |
 
-Estimation indicative : plusieurs mois au minimum pour une personne seule ; 9 à 18 mois ou davantage sont plausibles. Les phases les plus risquées : parité des encodeurs image/audio, quantification, parsers de médias, résistance aux pannes.
+Indicative estimate: several months at minimum for one person; 9 to 18 months or more are plausible. The riskiest phases: image/audio encoder parity, quantization, media parsers, and fault tolerance.
 
-## 13. Risques à garder visibles
+## 13. Risks to keep visible
 
-1. **Zéro crate** accroît fortement la charge de maintenance et la surface de bugs (HTTP, JSON, PNG/JPEG, audio, index, persistance) : une revue de sécurité sérieuse est impérative.
-2. **Modèle spécialisé** : une évolution majeure des poids ou du processeur exige une mise à jour du moteur. Figer le modèle est une fonctionnalité assumée.
-3. **FP16 interdit** pour les activations : commencer en FP32, puis étudier BF16 et la quantification avec validation.
-4. **Binaire unique ≠ zéro disque** : les documents indexés et le WAL doivent survivre aux redémarrages.
-5. **Aucune dépendance applicative ≠ indépendance OS/CPU** : réseau, fichiers, threads et mémoire passent par la plateforme.
-6. **Performance à prouver** : Rust n'est pas automatiquement plus rapide que llama.cpp ; la métrique est la performance à qualité comparable.
+1. **Zero crate** greatly increases maintenance load and bug surface (HTTP, JSON, PNG/JPEG, audio, index, persistence): a serious security review is imperative.
+2. **Specialized model**: a major change in weights or processor requires an engine update. Freezing the model is an accepted feature.
+3. **FP16 forbidden** for activations: start in FP32, then study BF16 and quantization with validation.
+4. **Single binary ≠ zero disk**: indexed documents and the WAL must survive restarts.
+5. **No application dependency ≠ OS/CPU independence**: network, files, threads, and memory go through the platform.
+6. **Performance to prove**: Rust is not automatically faster than llama.cpp; the metric is performance at comparable quality.
 
-## 14. Checklist avant commit
+## 14. Pre-commit checklist
 
-- [ ] Aucune dépendance ajoutée (vérifier `cargo tree`).
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` et build `aarch64-apple-darwin` passent.
-- [ ] Golden tests et fixtures à jour ; aucune régression de parité.
-- [ ] Aucun `unsafe` sans commentaire `// SAFETY:` et sans test du chemin scalaire.
-- [ ] Aucun poids lourd, secret ou fichier de modèle commité.
-- [ ] Documentation/ADR mise à jour si le comportement ou une décision change.
-- [ ] Message de commit au format `type(scope): résumé`, avec le jalon concerné.
+- [ ] No dependency added (check `cargo tree`).
+- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and the `aarch64-apple-darwin` build pass.
+- [ ] Golden tests and fixtures up to date; no parity regression.
+- [ ] No `unsafe` without a `// SAFETY:` comment and without a scalar path test.
+- [ ] No heavy weights, secret, or model file committed.
+- [ ] Documentation/ADR updated if behavior or a decision changes.
+- [ ] Commit message in `type(scope): summary` format, with the relevant milestone.
 
-## 15. Références
+## 15. References
 
-- [Google — fiche officielle EmbeddingGemma 2](https://github.com/google-gemma/docs/blob/main/docs/models/embeddinggemma/model-card-v2.md)
-- [Google — poids originaux EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2)
-- [Dalailalama — EmbeddingGemma 2 en Rust](https://github.com/Dalailalama/embeddinggemma2-rust) (à étudier, jamais comme dépendance)
-- [Rust — documentation officielle `std`](https://doc.rust-lang.org/std/)
-- [Rust — cibles officielles macOS](https://doc.rust-lang.org/rustc/platform-support/apple-darwin.html)
+- [Google — official EmbeddingGemma 2 model card](https://github.com/google-gemma/docs/blob/main/docs/models/embeddinggemma/model-card-v2.md)
+- [Google — original EmbeddingGemma 2 weights](https://huggingface.co/google/embeddinggemma-2)
+- [Dalailalama — EmbeddingGemma 2 in Rust](https://github.com/Dalailalama/embeddinggemma2-rust) (to study, never as a dependency)
+- [Rust — official `std` documentation](https://doc.rust-lang.org/std/)
+- [Rust — official macOS targets](https://doc.rust-lang.org/rustc/platform-support/apple-darwin.html)
