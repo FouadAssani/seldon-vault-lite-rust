@@ -4,12 +4,12 @@ Local multimodal embedding, indexing, and search engine, written in Rust
 `std` only (no third-party crates), specialized for
 `google/embeddinggemma-2`.
 
-**Status: milestone M1 — formats and tensor core (in progress).** The binary
-reader, SHA-256, BF16 conversion, strict JSON parser, Safetensors reader, FP32
-tensors, and scalar kernels are implemented and tested. Tokenization, the
-frozen model manifest, and inference are not implemented yet. The CLI still
-exposes only `version` and `help`. No modality (text, image,
-audio) is declared supported: no fake result is returned.
+**Status: milestone M1 — formats, tensor core, frozen model, and tokenizer.**
+The binary reader, SHA-256, BF16 conversion, strict JSON parser, Safetensors
+reader, FP32 tensors, scalar kernels, model manifest, exact BPE tokenizer, and
+official prompt prefixes are implemented and tested. Inference is not
+implemented yet. The CLI still exposes only `version` and `help`. No modality
+(text, image, audio) is declared supported: no fake result is returned.
 
 ## Requirements
 
@@ -42,12 +42,23 @@ cargo test
 | FP32 tensors, shapes, views, and element caps | implemented |
 | Scalar add/mul/matmul/dot/softmax/RMSNorm/GELU/GeGLU/RoPE/attention/L2 | implemented |
 | Deterministic Safetensors fixture | implemented |
-| Frozen model manifest and tokenization parity | pending |
+| Frozen model manifest with SHA-256 for every file | implemented |
+| Exact BPE tokenizer and byte fallback | implemented |
+| Golden token IDs and reduced tokenizer fixture | implemented |
+| Official prompt prefixes with query/document roles | implemented |
 | Text/image/audio embeddings | pending |
 
 The format and tensor layers are documented in
 [docs/formats.md](docs/formats.md) and decided in
 [docs/adr/0002-formats-and-tensors.md](docs/adr/0002-formats-and-tensors.md).
+The frozen model and tokenizer are documented in
+[docs/tokenizer.md](docs/tokenizer.md) and decided in
+[docs/adr/0003-model-freeze-and-tokenizer.md](docs/adr/0003-model-freeze-and-tokenizer.md).
+
+Model files are development assets outside Git, in `.model-cache/<revision>/`.
+The committed reduced tokenizer reproduces the full tokenizer on the golden
+corpus. When the full `tokenizer.json` is present, `cargo test` also verifies
+its SHA-256 and every golden case against it.
 
 ## Full verification
 
@@ -94,9 +105,12 @@ Or simply:
 - [Agent and contributor guidelines](AGENTS.md)
 - [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
 - [ADR 0002 — Formats and tensors](docs/adr/0002-formats-and-tensors.md)
+- [ADR 0003 — Model freeze and tokenizer](docs/adr/0003-model-freeze-and-tokenizer.md)
 - [Architecture (M1 state)](docs/architecture.md)
 - [Formats and binary primitives](docs/formats.md)
+- [Tokenizer and prompts](docs/tokenizer.md)
 - [Numerical parity and reference datasets](docs/model-parity.md)
+- [Frozen model manifest](fixtures/model/manifest.json)
 - [Fixtures policy](fixtures/README.md)
 
 All project documentation and code are written in English.

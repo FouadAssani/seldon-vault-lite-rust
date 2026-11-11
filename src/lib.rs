@@ -1,9 +1,9 @@
 //! Foundations of Seldon Vault Lite.
 //!
 //! The crate exposes the CLI, the central error type, binary format readers,
-//! strict JSON, and the FP32 tensor core. Inference, storage, and media
-//! modules will be added over milestones M2 to M9; no empty module is created
-//! in advance.
+//! strict JSON, the FP32 tensor core, and the frozen model tokenizer. Inference,
+//! storage, and media modules will be added over milestones M2 to M9; no empty
+//! module is created in advance.
 //!
 //! Project contract: no third-party crate, only std and core::arch
 //! intrinsics.
@@ -14,6 +14,7 @@ pub mod binary;
 pub mod cli;
 pub mod error;
 pub mod json;
+pub mod model;
 pub mod tensor;
 
 /// Crate version, from Cargo.toml.

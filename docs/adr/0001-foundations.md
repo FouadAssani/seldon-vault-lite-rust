@@ -136,7 +136,8 @@ The Cargo graph must contain only the root crate. `otool -L` must show only macO
 
 ### Follow-up
 
-- **ADR 0002 (M1)**: internal weight and versioned container format.
-- **ADR 0003 (M1/M3)**: journal format, snapshots, and transactions.
-- **ADR 0004 (M6)**: HTTP contract, LAN authentication, and limits.
+- **ADR 0002 (M1)**: binary formats, strict JSON, Safetensors, and FP32 tensors.
+- **ADR 0003 (M1)**: frozen model, tokenizer parity, and prompt prefixes.
+- **ADR 0004 (M1/M3)**: journal format, snapshots, and transactions.
+- **ADR 0005 (M6)**: HTTP contract, LAN authentication, and limits.
 - The source code license will be decided before any distribution; weights remain subject to the model's official license.

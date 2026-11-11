@@ -3,8 +3,9 @@
 ## Purpose
 
 This document describes the repository organization at milestone M1 and the
-boundaries that later milestones must respect. It does not replace ADR 0001 or
-ADR 0002, which are authoritative for foundational and format decisions.
+boundaries that later milestones must respect. It does not replace ADR 0001,
+ADR 0002, or ADR 0003, which are authoritative for foundational, format, and
+model decisions.
 
 ## Current state
 
@@ -27,6 +28,10 @@ src/
 │   ├── bf16.rs         # BF16 <-> FP32 conversion
 │   └── safetensors.rs  # strict read-only Safetensors reader
 ├── json/mod.rs         # strict bounded JSON parser
+├── model/
+│   ├── mod.rs
+│   ├── prompt.rs       # official prompt prefixes
+│   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
 └── tensor/
     ├── mod.rs
     ├── dtype.rs        # F32/BF16 dtype policy
@@ -35,17 +40,25 @@ src/
     └── kernels.rs      # scalar reference kernels
 tests/
 ├── cli.rs              # binary integration tests
-└── formats.rs          # public API format/tensor integration tests
+├── formats.rs          # public API format/tensor integration tests
+└── tokenizer.rs        # golden tokenizer and manifest parity tests
 docs/
 ├── adr/0001-foundations.md
 ├── adr/0002-formats-and-tensors.md
+├── adr/0003-model-freeze-and-tokenizer.md
 ├── architecture.md
 ├── formats.md
-└── model-parity.md
+├── model-parity.md
+└── tokenizer.md
 fixtures/
 ├── README.md
-└── formats/
-    └── mini.safetensors # deterministic format fixture
+├── formats/
+│   └── mini.safetensors # deterministic format fixture
+├── model/
+│   └── manifest.json    # frozen model revision, sizes, SHA-256, prompts
+└── tokenizer/
+    ├── golden.json      # official token ids for the golden corpus
+    └── mini_tokenizer.json # reduced tokenizer for reproducible tests
 tools/
 └── model-packer/
     └── README.md       # role planned at milestone M12
@@ -53,9 +66,10 @@ scripts/
 └── verify.sh           # full milestone quality gate
 ```
 
-No `api`, `model`, `media`, `index`,
-`storage`, or `jobs` module is created empty. They will
-appear with their first testable feature, at the corresponding milestone.
+No `api`, `media`, `index`, `storage`,
+or `jobs` module is created empty. They will appear with their first
+testable feature, at the corresponding milestone. Inference is not implemented
+yet.
 
 ## Layers and dependencies
 
@@ -74,6 +88,8 @@ Rules:
 - `binary` depends on `error`, `json`, and
   `tensor`.
 - `tensor` depends only on `error`.
+- `model` depends on `binary`, `json`, and
+  `error`; it does not depend on inference or storage.
 - Parsers do not depend on inference layers.
 - Storage does not depend on the HTTP API.
 - No module depends on a third-party crate.
@@ -145,10 +161,46 @@ construction. `Tensor` is owned FP32 data capped at
 `src/tensor/kernels.rs` is the deterministic scalar reference; SIMD
 will be compared against it before any optimization is accepted.
 
+## Model boundary
+
+The model is frozen at revision
+`f9972ac22e696a105c482202646979e33e4b5a1e`. The manifest is
+`fixtures/model/manifest.json`.
+
+### Tokenizer
+
+`model::tokenizer::Tokenizer` loads the frozen tokenizer.json with
+bounded JSON limits and validates the BPE pipeline before use:
+
+- model type BPE, byte fallback, fuse_unk, no ignore_merges;
+- normalizer replaces a space with `▁`;
+- pre-tokenizer splits on a space with `MergedWithPrevious`;
+- post-processor prepends `<bos>` and appends `<eos>`;
+- decoder applies Replace, ByteFallback, and Fuse.
+
+Encoding matches added tokens in raw text, normalizes spaces, starts from
+single characters or byte tokens, and applies merges by rank. The input is
+capped at 1 MiB and the output at 262,144 tokens. The full tokenizer.json is a
+development asset outside Git; the reduced fixture reproduces it on the golden
+corpus.
+
+### Prompts
+
+`model::prompt` exposes the official prefixes and a `Prompt`
+enum. A query and a document are distinct roles; a test compares every
+constant with the frozen manifest.
+
+### Model files
+
+Model files live in `.model-cache/<revision>/`, which is ignored by
+Git. Weights are never committed. The manifest records the weights' SHA-256
+from the Hugging Face LFS object id.
+
 ## Trust boundaries
 
 Everything coming from outside is untrusted: CLI arguments, files, HTTP bodies,
-JSON, Safetensors headers, images, audio, and metadata. Each boundary must:
+JSON, Safetensors headers, tokenizer documents, images, audio, and metadata.
+Each boundary must:
 
 1. validate types, lengths, offsets, and versions before allocation;
 2. cap dimensions and memory;
@@ -186,10 +238,10 @@ graph contains a dependency or if `minos` is not 11.0.
 
 ## Next steps
 
-1. **M1 (remaining)**: freeze the model revision, record file SHA-256 values,
-   inventory the tokenizer and processors, produce golden token IDs, and
-   implement exact tokenization.
-2. **M2**: compliant text embeddings and Matryoshka dimensions.
+1. **M1**: complete for the formats, tensor, model-freeze, and tokenizer scope.
+   The model weights are not loaded and no inference is claimed.
+2. **M2**: text embeddings, layer-output parity, pooling, the 512 to 768
+   projection, and Matryoshka dimensions.
 3. **M3**: persistent storage, BM25/KNN index, and RRF fusion.
 4. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
 5. **M6**: HTTP API, jobs, and hardening.

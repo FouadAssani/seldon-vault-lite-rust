@@ -172,9 +172,12 @@ The packer will produce a Rust-defined container with:
 The format will be implemented at the packaging milestone (M12). Until then,
 weights remain external development files.
 
-## Tokenization (gated)
+## Tokenization
 
-Tokenization is part of M1 but is not implemented yet. Exact token ID equality
-requires the official tokenizer files and a frozen model revision. No fixture
-is fabricated. The next steps are the model manifest, the tokenizer inventory,
-and golden token IDs from the official implementation.
+Tokenization is implemented at M1. The model is frozen at revision
+`f9972ac22e696a105c482202646979e33e4b5a1e`, and
+`fixtures/model/manifest.json` records the tokenizer inventory and
+file fingerprints. The Rust BPE implementation matches golden ids produced by
+the official `tokenizers 0.23.3` library. See
+`docs/tokenizer.md` and ADR 0003 for the pipeline, limits, fixtures,
+and parity evidence.

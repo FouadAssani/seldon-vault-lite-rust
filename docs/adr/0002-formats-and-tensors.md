@@ -152,23 +152,22 @@ Validation rules:
 - L2 normalization rejects zero vectors;
 - no SIMD or unsafe is introduced in M1.
 
-### D7 — Tokenization and model freeze are gated
+### D7 — Tokenization and model freeze (completed by ADR 0003)
 
-The plan requires exact token ID parity. That cannot be validated without the
-official tokenizer files and a frozen model revision. M1 therefore does not
-fabricate tokenizer fixtures and does not claim tokenization support.
+At the time ADR 0002 was accepted, tokenization was gated on the official model
+files. That gate is now closed:
 
-The next M1 steps are:
+- `google/embeddinggemma-2` is frozen at revision
+  `f9972ac22e696a105c482202646979e33e4b5a1e`;
+- `fixtures/model/manifest.json` records the SHA-256 of every used
+  file, the tokenizer inventory, the text configuration, and the prompts;
+- the official BPE tokenizer is implemented in Rust and verified against golden
+  ids from `tokenizers 0.23.3`;
+- a reduced tokenizer fixture reproduces the full tokenizer on the committed
+  corpus without committing the 32 MiB tokenizer.json.
 
-1. freeze `google/embeddinggemma-2` at a precise revision;
-2. record the SHA-256 of every used file in a versioned manifest;
-3. inventory layers, dimensions, dtypes, tensor names, prompts, and processor
-   rules;
-4. generate golden token IDs and tensor excerpts with the official
-   implementation, outside the product;
-5. implement the declared tokenizer variant and prove exact token ID equality.
-
-Any token ID divergence blocks inference integration.
+See ADR 0003 for the tokenizer and model-freeze decisions. Any token ID
+divergence still blocks inference integration.
 
 ### D8 — Internal weight container
 
