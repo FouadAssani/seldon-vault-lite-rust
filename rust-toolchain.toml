@@ -1,0 +1,7 @@
+# Stable toolchain; the version validated for M0 is 1.99.1 (documented in
+# ADR 0001). The phase 1 target is macOS Apple Silicon only.
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
+targets = ["aarch64-apple-darwin"]

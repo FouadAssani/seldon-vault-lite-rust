@@ -1,0 +1,10 @@
+# Phase 1: macOS Apple Silicon only. The x86_64-apple-darwin target
+# is explicitly excluded.
+[build]
+target = "aarch64-apple-darwin"
+
+# macOS 11.0 is the deployment floor retained for phase 1.
+# force = true prevents a developer environment variable from silently
+# changing the binary's deployment target.
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "11.0", force = true }
