@@ -10,8 +10,9 @@ The container format (`src/bundle`), the streaming writer, and the packer
 commands are implemented. The packer was run on the frozen revision and
 produced 9 sections and 1,525,784,026 bytes; `verify` re-parsed the file,
 checked the header CRC-32 and catalog digest, and checked every section
-SHA-256. Embedded loading and the Mach-O size/startup measurements remain in
-progress.
+SHA-256. Bundle-backed loading from a model directory or a `.svlm` file is implemented
+and produces identical embeddings. Embedded `include_bytes!` loading and the
+Mach-O size/startup measurements remain in progress.
 
 ## Constraints
 

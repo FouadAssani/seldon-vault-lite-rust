@@ -19,6 +19,7 @@ use std::path::Path;
 use crate::error::{Error, Result};
 use crate::model::config::{LayerType, MAX_TEXT_TOKENS, TextConfig};
 use crate::model::prompt::{self, Prompt};
+use crate::model::source::ModelFiles;
 use crate::model::tokenizer::Tokenizer;
 use crate::model::weights::TextWeights;
 use crate::tensor::kernels;
@@ -90,8 +91,19 @@ impl TextModel {
     /// oversized weight file, or a weight inventory that does not match the
     /// configuration.
     pub fn load(model_dir: &Path) -> Result<Self> {
-        let config = TextConfig::from_file(&model_dir.join("config.json"))?;
-        let weights = TextWeights::from_file(&model_dir.join("model.safetensors"), &config)?;
+        Self::from_files(&ModelFiles::directory(model_dir))
+    }
+
+    /// Loads a text model from a directory or bundle source.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error for a missing or invalid configuration, an
+    /// oversized weight file, or a weight inventory that does not match the
+    /// configuration.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let config = TextConfig::from_files(files)?;
+        let weights = TextWeights::from_files(files, &config)?;
         Self::new(config, weights)
     }
 
@@ -559,8 +571,19 @@ impl TextEmbedder {
     /// inconsistent weight tensor, an oversized file, or a tokenizer whose
     /// vocabulary does not match the model.
     pub fn load(model_dir: &Path) -> Result<Self> {
-        let model = TextModel::load(model_dir)?;
-        let tokenizer = Tokenizer::load(&model_dir.join("tokenizer.json"))?;
+        Self::from_files(&ModelFiles::directory(model_dir))
+    }
+
+    /// Loads a text embedder from a directory or bundle source.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error for an invalid configuration, a missing or
+    /// inconsistent weight tensor, an oversized file, or a tokenizer whose
+    /// vocabulary does not match the model.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let model = TextModel::from_files(files)?;
+        let tokenizer = Tokenizer::from_files(files)?;
         if tokenizer.vocab_size() != model.config().vocab_size() {
             return Err(Error::corrupt(format!(
                 "tokenizer vocabulary has {} entries, model declares {}",

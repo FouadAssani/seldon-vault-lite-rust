@@ -743,8 +743,13 @@ a dependency or if minos is not 11.0.
    with runtime dispatch, scalar fallback, differential tests, and frozen-model
    parity replay are implemented. The versioned model container in
    `src/bundle` and the Rust std packer in `tools/model-packer` are implemented
-   and a real frozen bundle is verified. Embedded loading and Mach-O
-   size/startup verification remain in progress.
+   and a real frozen bundle is verified. The text, image, and audio loaders use
+   `src/model/source.rs` to accept a model directory or a `.svlm` bundle file;
+   the bundle path verifies the header CRC-32, catalog digest, and section
+   SHA-256 and produces identical embeddings. A compile-time `embedded-model`
+   feature embeds the bundle with `include_bytes!` and was verified with a
+   tiny bundle. The full 1.5 GB embedded build and Mach-O size/startup
+   verification remain in progress.
 6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and

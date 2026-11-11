@@ -269,5 +269,63 @@ cargo test --release --test audio_embeddings audio_embedding_matches_the_officia
   engine is optimized for every Apple Silicon model.
 - The NEON path is deterministic: the four-lane reduction order is fixed.
 - The scalar path is still the oracle and is still tested.
-- Packaging remains in progress: the container format, packer, embedded
-  loading path, and Mach-O size/startup measurements are the next M7 steps.
+- The container format and packer are implemented. Bundle-backed loading from
+  a directory or a `.svlm` file is implemented and produces identical
+  embeddings. Embedded `include_bytes!` loading and Mach-O size/startup
+  measurements are the next M7 steps.
+
+## Bundle-backed model loading — milestone M7
+
+The frozen model was loaded once from the development directory and once from
+the verified `.svlm` bundle. Both runs used the same release binary:
+
+```bash
+REV=f9972ac22e696a105c482202646979e33e4b5a1e
+BIN=target/aarch64-apple-darwin/release/seldon-vault-lite
+/usr/bin/time -l "$BIN" embed --model-dir ".model-cache/$REV" \
+  --ids 2,5,6,7,1 --dim 8
+/usr/bin/time -l "$BIN" embed --model-dir ".model-cache/$REV/model.svlm" \
+  --ids 2,5,6,7,1 --dim 8
+```
+
+| Source | Wall time | User time | Maximum RSS | Output |
+|---|---:|---:|---:|---|
+| Model directory | 6.96 s | 6.38 s | 2,580,709,376 B (~2.40 GiB) | reference |
+| `.svlm` bundle file | 7.40 s | 6.50 s | 2,617,540,608 B (~2.44 GiB) | identical bytes |
+
+The bundle path pays for the header CRC-32, catalog digest, and section SHA-256
+verification. The weights loader reuses the section digest from the bundle
+header, so the 1.5 GB Safetensors section is not hashed a second time. Before
+that reuse the bundle path took 13.49 s; the change removed the redundant pass
+without changing the output.
+
+The frozen bundle was also loaded through the image and audio embedders in
+ignored release tests: 7.33 s for the image bundle and 7.36 s for the audio
+bundle, both matching the frozen Safetensors fingerprint and the expected tower
+layer counts.
+
+These are single-process cold-start measurements on the reference Apple M2 Pro.
+They include model loading, weight decoding, tokenizer loading, and the forward
+pass for five token ids. The embedded `include_bytes!` path will be measured
+separately when the final packaging step is implemented.
+
+## Embedded tiny bundle — milestone M7
+
+The `embedded-model` feature was tested with the 48,590-byte tiny text bundle:
+
+```bash
+SELDON_MODEL_BUNDLE="$PWD/.model-cache/tiny_text.svlm" \
+  CARGO_TARGET_DIR=target/embedded \
+  cargo build --release --features embedded-model --target aarch64-apple-darwin
+target/embedded/aarch64-apple-darwin/release/seldon-vault-lite \
+  embed --model-dir /nonexistent --ids 2,5,6,7,1 --dim 8
+```
+
+| Binary | Size | Model source | Output |
+|---|---:|---|---|
+| Default release | 1.4 MB | `fixtures/model/tiny_text` directory | reference |
+| Embedded release | 1.5 MB | 48,590-byte embedded bundle | identical bytes |
+
+The embedded binary ignored the nonexistent `--model-dir` and produced the same
+8-dimensional vector. The full 1.5 GB embedded build and its startup, resident
+memory, and Mach-O measurements remain the final M7 packaging step.

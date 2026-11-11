@@ -19,6 +19,7 @@ use std::path::Path;
 use crate::binary::read_file_bounded;
 use crate::error::{Error, Result};
 use crate::json::{self, Limits, Number, Value};
+use crate::model::source::ModelFiles;
 
 /// Maximum size of a tokenizer.json file in bytes.
 pub const MAX_TOKENIZER_FILE_BYTES: u64 = 64 * 1024 * 1024;
@@ -86,6 +87,12 @@ impl Tokenizer {
         let text = std::str::from_utf8(&bytes)
             .map_err(|_| Error::corrupt("tokenizer file is not valid UTF-8"))?;
         Self::from_json_str(text)
+    }
+
+    /// Loads tokenizer.json from a directory or bundle source.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let text = files.read_utf8("tokenizer.json", MAX_TOKENIZER_FILE_BYTES)?;
+        Self::from_json_str(&text)
     }
 
     /// Parses a tokenizer JSON document from a string.

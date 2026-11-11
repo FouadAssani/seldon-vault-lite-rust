@@ -12,9 +12,10 @@ use std::path::Path;
 
 use crate::binary::read_file_bounded;
 use crate::binary::safetensors::SafetensorsFile;
-use crate::binary::sha256::sha256_hex;
+use crate::binary::sha256::{hex_digest, sha256_hex};
 use crate::error::{Error, Result};
 use crate::model::config::TextConfig;
+use crate::model::source::ModelFiles;
 use crate::tensor::Tensor;
 
 /// Maximum size of the Safetensors file accepted by the loader.
@@ -76,9 +77,32 @@ impl TextWeights {
         Self::from_bytes(&bytes, config)
     }
 
+    /// Loads model.safetensors from a directory or bundle source.
+    ///
+    /// A bundle section already carries its SHA-256 in the header, so the
+    /// loader reuses it instead of hashing the 1.5 GB section again.
+    pub fn from_files(files: &ModelFiles<'_>, config: &TextConfig) -> Result<Self> {
+        let bytes = files.read("model.safetensors", MAX_MODEL_FILE_BYTES)?;
+        match files.section_sha256("model.safetensors") {
+            Some(digest) => Self::from_bytes_with_fingerprint(&bytes, config, hex_digest(&digest)),
+            None => Self::from_bytes(&bytes, config),
+        }
+    }
+
     /// Loads the text weights from an in-memory Safetensors file.
     pub fn from_bytes(bytes: &[u8], config: &TextConfig) -> Result<Self> {
         let fingerprint = sha256_hex(bytes);
+        Self::from_bytes_with_fingerprint(bytes, config, fingerprint)
+    }
+
+    /// Loads the text weights with an already verified SHA-256 fingerprint.
+    ///
+    /// The caller must have verified that `fingerprint` belongs to `bytes`.
+    pub fn from_bytes_with_fingerprint(
+        bytes: &[u8],
+        config: &TextConfig,
+        fingerprint: String,
+    ) -> Result<Self> {
         let file = SafetensorsFile::parse(bytes)?;
         Self::decode(&file, config, fingerprint)
     }

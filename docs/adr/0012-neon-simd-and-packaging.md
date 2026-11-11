@@ -108,11 +108,28 @@ packer was run on the frozen revision: it produced 9 sections and
 catalog digest, and checked every section SHA-256. The bundle lives in the
 ignored model cache; weights are never committed.
 
-The final binary will embed the container with `include_bytes!` (or an
-equivalent Rust mechanism) and load model files from the embedded bytes, with
-no first-start download. The linker, startup time, binary size, and resident
-memory limits will be measured on Apple Silicon before the packaging step is
-declared complete. Only user data, logs, and snapshots remain external files.
+`src/model/source.rs` implements `ModelFiles`, a source that is either a
+model directory or a parsed bundle. The text, image, and audio loaders use it,
+so the same validation and decoding code runs for both. A CLI or API
+`--model-dir` path that is a regular file is treated as a bundle: it is read,
+structurally parsed, fully verified, and then loaded from its sections. The
+loader reuses the section SHA-256 recorded in the bundle header as the weights
+fingerprint, avoiding a second hash of the 1.5 GB Safetensors section. On the
+reference Apple M2 Pro, the directory path took 6.96 s and the bundle path
+7.40 s, with identical embedding bytes.
+
+The `embedded-model` Cargo feature embeds the container with
+`include_bytes!(env!("SELDON_MODEL_BUNDLE"))`. The embedded bytes are parsed
+and verified once in a `OnceLock`, and every text, image, and audio loader uses
+the embedded sections; the model path is ignored in this mode. A tiny-bundle
+build was verified to produce the same vector as the directory-loaded tiny
+model and to ignore a nonexistent `--model-dir`. The feature has no
+third-party dependency and is disabled by default.
+
+The full 1.5 GB embedded build and its linker, startup time, binary size, and
+resident memory limits will be measured on Apple Silicon before the packaging
+step is declared complete. Only user data, logs, and snapshots remain external
+files.
 
 The packer is a development tool; it is not part of the delivered runtime
 binary. It uses only `std` and first-party code.

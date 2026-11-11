@@ -121,7 +121,7 @@ A poisoned store or a failed readiness probe returns 503 with the same schema.
       }
     }
 
-`text_input` is false when the model directory has no `tokenizer.json`; the
+`text_input` is false when the model source has no `tokenizer.json`; the
 explicit token-id input remains available. The tiny diagnostic fixtures use
 that path. `matryoshka_dimensions` lists the official dimensions that do not
 exceed the model embedding dimension.

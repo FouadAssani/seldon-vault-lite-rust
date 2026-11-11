@@ -10,6 +10,7 @@ pub mod audio_embedder;
 pub mod config;
 pub mod image;
 pub mod prompt;
+pub mod source;
 pub mod text;
 pub mod tokenizer;
 pub mod vision;
@@ -19,6 +20,9 @@ pub use audio::{AudioConfig, AudioModel, AudioOutput, AudioWeights};
 pub use audio_embedder::{AudioEmbedder, AudioEmbeddingOutput, AudioSpecialTokens};
 pub use config::{LayerConfig, LayerType, TextConfig};
 pub use image::{ImageEmbedder, ImageEmbeddingOutput, ImageSpecialTokens};
+pub use source::{
+    ModelFiles, load_audio_embedder, load_image_embedder, load_text_embedder, load_text_model,
+};
 pub use text::{ForwardOutput, TextEmbedder, TextModel};
 pub use vision::{VisionConfig, VisionModel, VisionOutput, VisionWeights};
 pub use weights::TextWeights;

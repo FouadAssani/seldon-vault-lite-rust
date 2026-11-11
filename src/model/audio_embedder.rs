@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use crate::binary::read_file_bounded;
+use crate::binary::sha256::hex_digest;
 use crate::error::{Error, Result};
 use crate::json;
 use crate::media::Audio;
@@ -22,6 +22,7 @@ use crate::media::audio_preprocess::log_mel;
 use crate::model::audio::{AudioConfig, AudioModel, AudioOutput, AudioWeights};
 use crate::model::config::{MAX_CONFIG_BYTES, MAX_TEXT_TOKENS, TextConfig};
 use crate::model::prompt::{self, Prompt};
+use crate::model::source::ModelFiles;
 use crate::model::text::{ForwardOutput, TextModel};
 use crate::model::tokenizer::Tokenizer;
 use crate::model::weights::{MAX_MODEL_FILE_BYTES, TextWeights};
@@ -90,36 +91,62 @@ impl AudioEmbedder {
     /// for audio-only embedding, and text embedding through this embedder
     /// returns an unsupported error instead of pretending to tokenize.
     pub fn load(model_dir: &Path) -> Result<Self> {
-        let config_bytes = read_file_bounded(&model_dir.join("config.json"), MAX_CONFIG_BYTES)?;
-        let config_text = std::str::from_utf8(&config_bytes)
-            .map_err(|_| Error::corrupt("config.json is not valid UTF-8"))?;
-        let config_value = json::parse(config_text)?;
+        Self::from_files(&ModelFiles::directory(model_dir))
+    }
+
+    /// Loads the audio embedder from a directory or bundle source.
+    ///
+    /// The Safetensors section is read once and shared by the text and audio
+    /// weight loaders. When tokenizer.json is present, every audio special
+    /// token id is checked against it. When it is absent, audio-only embedding
+    /// uses the ids declared by config.json and text embedding through this
+    /// embedder returns an unsupported error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error for a missing or invalid configuration, a missing
+    /// or inconsistent weight tensor, an oversized file, or a tokenizer whose
+    /// vocabulary does not match the model.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let config_text = files.read_utf8("config.json", MAX_CONFIG_BYTES)?;
+        let config_value = json::parse(&config_text)?;
         let text_config = TextConfig::from_json_value(&config_value)?;
         let audio_config = AudioConfig::from_json_value(&config_value)?;
 
-        let bytes = read_file_bounded(&model_dir.join("model.safetensors"), MAX_MODEL_FILE_BYTES)?;
-        let text_weights = TextWeights::from_bytes(&bytes, &text_config)?;
-        let audio_weights =
-            AudioWeights::from_bytes(&bytes, &audio_config, text_config.hidden_size())?;
+        let bytes = files.read("model.safetensors", MAX_MODEL_FILE_BYTES)?;
+        let fingerprint = files
+            .section_sha256("model.safetensors")
+            .map(|digest| hex_digest(&digest));
+        let text_weights = match &fingerprint {
+            Some(fingerprint) => {
+                TextWeights::from_bytes_with_fingerprint(&bytes, &text_config, fingerprint.clone())?
+            }
+            None => TextWeights::from_bytes(&bytes, &text_config)?,
+        };
+        let audio_weights = match &fingerprint {
+            Some(fingerprint) => AudioWeights::from_bytes_with_fingerprint(
+                &bytes,
+                &audio_config,
+                text_config.hidden_size(),
+                fingerprint.clone(),
+            )?,
+            None => AudioWeights::from_bytes(&bytes, &audio_config, text_config.hidden_size())?,
+        };
         let model = TextModel::new(text_config, text_weights)?;
         let audio = AudioModel::new(audio_config, audio_weights, model.config().hidden_size())?;
 
-        let tokenizer_path = model_dir.join("tokenizer.json");
-        let tokenizer = match std::fs::metadata(&tokenizer_path) {
-            Ok(metadata) if metadata.is_file() => {
-                let tokenizer = Tokenizer::load(&tokenizer_path)?;
-                if tokenizer.vocab_size() != model.config().vocab_size() {
-                    return Err(Error::corrupt(format!(
-                        "tokenizer vocabulary has {} entries, model declares {}",
-                        tokenizer.vocab_size(),
-                        model.config().vocab_size()
-                    )));
-                }
-                Some(tokenizer)
+        let tokenizer = if files.contains("tokenizer.json") {
+            let tokenizer = Tokenizer::from_files(files)?;
+            if tokenizer.vocab_size() != model.config().vocab_size() {
+                return Err(Error::corrupt(format!(
+                    "tokenizer vocabulary has {} entries, model declares {}",
+                    tokenizer.vocab_size(),
+                    model.config().vocab_size()
+                )));
             }
-            Ok(_) => None,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(Error::Io(error)),
+            Some(tokenizer)
+        } else {
+            None
         };
         let tokens = parse_special_tokens(&config_value, tokenizer.as_ref())?;
         Ok(Self {

@@ -117,16 +117,20 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     hasher.finalize()
 }
 
-/// Computes the lowercase hexadecimal SHA-256 digest of a byte slice.
-pub fn sha256_hex(data: &[u8]) -> String {
+/// Formats a 32-byte SHA-256 digest as lowercase hexadecimal.
+pub fn hex_digest(digest: &[u8; 32]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let digest = sha256(data);
     let mut output = String::with_capacity(64);
     for byte in digest {
         output.push(HEX[(byte >> 4) as usize] as char);
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+/// Computes the lowercase hexadecimal SHA-256 digest of a byte slice.
+pub fn sha256_hex(data: &[u8]) -> String {
+    hex_digest(&sha256(data))
 }
 
 /// SHA-256 compression function for one 64-byte block.

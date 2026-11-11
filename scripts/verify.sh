@@ -29,6 +29,15 @@ else
     echo "skipping: .model-cache/$REV/model.safetensors is not present"
 fi
 
+echo "--- bundle-backed loading (optional) ---"
+if [ -f ".model-cache/$REV/model.svlm" ]; then
+    cargo test --release --test bundle_loading frozen_model_bundle_matches_the_directory -- --ignored --nocapture
+    cargo test --release --test bundle_loading frozen_image_bundle_loads -- --ignored --nocapture
+    cargo test --release --test bundle_loading frozen_audio_bundle_loads -- --ignored --nocapture
+else
+    echo "skipping: .model-cache/$REV/model.svlm is not present"
+fi
+
 echo "--- model packer ---"
 cargo build --manifest-path tools/model-packer/Cargo.toml --release
 packer="tools/model-packer/target/aarch64-apple-darwin/release/model-packer"

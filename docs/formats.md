@@ -557,6 +557,53 @@ pooling, normalization, and tokenizer model files when the manifest lists them.
 Weights are never committed to Git. The bundle is a development artifact in the
 ignored model cache until the embedded loading path is implemented.
 
+### Bundle-backed loading
+
+`src/model/source.rs` defines `ModelFiles`, a source that is either a model
+directory or a parsed bundle. The text, image, and audio loaders use the same
+validation and decoding code for both. A `--model-dir` path that is a regular
+file is read, structurally parsed, and fully verified once, then loaded from the
+bundle sections. The returned model, tokenizer, and configuration own their
+data, so the bundle bytes can be dropped after loading.
+
+The loader reuses the section SHA-256 recorded in the bundle header as the
+weights fingerprint instead of hashing the 1.5 GB Safetensors section a second
+time. Measured on the reference Apple M2 Pro with the frozen revision:
+
+| Source | Wall time | Maximum RSS | Embedding |
+|---|---:|---:|---|
+| Model directory | 6.96 s | 2.58 GiB | reference |
+| `.svlm` bundle file | 7.40 s | 2.62 GiB | identical |
+
+Both runs used `embed --ids 2,5,6,7,1 --dim 8` and produced the same bytes.
+The bundle path additionally verifies the header CRC-32, the catalog digest, and
+every section SHA-256.
+
+The text, image, and audio bundle paths are covered by
+`tests/bundle_loading.rs`. The tiny text fixture proves directory/bundle
+equivalence in the fast suite; the ignored tests load the frozen 1.5 GB bundle
+and check the text, vision, and audio models.
+
+### Embedded loading
+
+The `embedded-model` Cargo feature embeds the bundle at compile time:
+
+```bash
+SELDON_MODEL_BUNDLE=/absolute/path/to/model.svlm \
+  cargo build --release --features embedded-model --target aarch64-apple-darwin
+```
+
+`src/model/source.rs` includes the file with
+`include_bytes!(env!("SELDON_MODEL_BUNDLE"))`, parses and verifies it once in
+a `OnceLock`, and all text, image, and audio loaders use the embedded sections.
+The `--model-dir` argument is ignored in this mode. The feature has no
+third-party dependency and is disabled by default.
+
+A tiny-bundle embedded build was verified: the binary produced the same
+8-dimensional vector as the directory-loaded tiny model, ignored a nonexistent
+`--model-dir`, and was 1.5 MB instead of 1.4 MB. The full 1.5 GB embedded build
+and its Mach-O size/startup measurements are the remaining packaging step.
+
 ## Tokenization
 
 Tokenization is implemented at M1 and text inference at M2. The model is frozen at revision
