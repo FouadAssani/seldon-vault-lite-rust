@@ -1,0 +1,10 @@
+# Phase 1 : macOS Apple Silicon uniquement. La cible x86_64-apple-darwin
+# est explicitement exclue.
+[build]
+target = "aarch64-apple-darwin"
+
+# macOS 11.0 est le plancher de déploiement retenu pour la phase 1.
+# force = true empêche une variable d'environnement du développeur de changer
+# silencieusement la cible de déploiement du binaire.
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "11.0", force = true }
