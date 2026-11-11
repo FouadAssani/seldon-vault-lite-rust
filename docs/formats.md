@@ -1,8 +1,9 @@
 # Formats and binary primitives
 
-This document describes the formats implemented at milestone M1 and the
-validation rules that protect the product from hostile input. ADR 0002 is the
-decision record; this document is the operational reference.
+This document describes the formats implemented through milestone M2 and
+the validation rules that protect the product from hostile input. ADR 0002 is
+the format decision record and ADR 0004 covers the text-embedding numerical
+path; this document is the operational reference.
 
 ## Trust boundary
 
@@ -139,8 +140,13 @@ The reference path is deterministic, single-threaded, and unsafe-free:
 | RMSNorm | non-negative epsilon, weight applied after normalization |
 | GELU tanh | Gemma-style approximation |
 | GeGLU | gelu(gate) * up |
-| RoPE | rotate-half, even head dimension |
+| RoPE | rotate-half, even head dimension; precomputed inverse frequencies |
 | attention | scaled dot product, optional causal mask |
+| bidirectional attention | grouped-query, symmetric sliding-window mask |
+| linear | [out, in] weight rows, reusable output buffer |
+| RMSNorm rows | per-row normalization with or without a learned scale |
+| mean pooling | mean over rows of a [sequence, width] matrix |
+| truncation | leading dimensions followed by L2 renormalization |
 | L2 normalization | rejects zero vectors |
 
 ## Fixture
@@ -174,7 +180,7 @@ weights remain external development files.
 
 ## Tokenization
 
-Tokenization is implemented at M1. The model is frozen at revision
+Tokenization is implemented at M1 and text inference at M2. The model is frozen at revision
 `f9972ac22e696a105c482202646979e33e4b5a1e`, and
 `fixtures/model/manifest.json` records the tokenizer inventory and
 file fingerprints. The Rust BPE implementation matches golden ids produced by

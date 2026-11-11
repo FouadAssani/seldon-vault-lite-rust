@@ -4,12 +4,16 @@ Local multimodal embedding, indexing, and search engine, written in Rust
 `std` only (no third-party crates), specialized for
 `google/embeddinggemma-2`.
 
-**Status: milestone M1 — formats, tensor core, frozen model, and tokenizer.**
-The binary reader, SHA-256, BF16 conversion, strict JSON parser, Safetensors
-reader, FP32 tensors, scalar kernels, model manifest, exact BPE tokenizer, and
-official prompt prefixes are implemented and tested. Inference is not
-implemented yet. The CLI still exposes only `version` and `help`. No modality
-(text, image, audio) is declared supported: no fake result is returned.
+**Status: milestone M2 — compliant text embeddings.**
+The M1 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer,
+and official prompt prefixes are complete. M2 adds the EmbeddingGemma 2 text
+encoder: strict configuration and weight loading, projection-only per-layer
+embeddings, bidirectional sliding/full attention, grouped-query attention,
+per-head query/key/value RMSNorm, layer-specific RoPE, gated GELU blocks, the
+512 to 768 projection, mean pooling, L2 normalization, and Matryoshka
+dimensions 768/512/256/128 with renormalization. The CLI exposes `version`,
+`help`, and `embed`. Image and audio are not implemented and are not declared
+supported.
 
 ## Requirements
 
@@ -28,9 +32,19 @@ cargo build
 cargo run -- version
 cargo run -- --help
 cargo test
+
+# Text embedding with the frozen model cache.
+cargo run --release -- embed --prompt SearchQuery "What causes the northern lights?"
+
+# Token ids without the tokenizer, useful for diagnostics.
+cargo run -- embed --model-dir fixtures/model/tiny_text --ids 1,5,7,9,2 --dim 8
 ```
 
-## What milestone M1 provides
+The full-model parity test runs when `.model-cache/<revision>/model.safetensors`
+is present. Set `SELDON_SKIP_MODEL_PARITY=1` to skip it during a quick check;
+the tiny official fixture still runs.
+
+## What milestone M2 provides
 
 | Area | Status |
 |---|---|
@@ -46,7 +60,15 @@ cargo test
 | Exact BPE tokenizer and byte fallback | implemented |
 | Golden token IDs and reduced tokenizer fixture | implemented |
 | Official prompt prefixes with query/document roles | implemented |
-| Text/image/audio embeddings | pending |
+| Strict text configuration and text weight inventory | implemented |
+| Projection-only per-layer embeddings (PLE) | implemented |
+| 24 bidirectional sliding/full layers and grouped-query attention | implemented |
+| Per-head Q/K/V RMSNorm and layer-specific RoPE | implemented |
+| 512 to 768 projection, mean pooling, L2 normalization | implemented |
+| Matryoshka 768/512/256/128 with renormalization | implemented |
+| Tiny official model fixture and full-model text parity test | implemented |
+| CLI `embed` for text and token ids | implemented |
+| Image/audio embeddings | pending |
 
 The format and tensor layers are documented in
 [docs/formats.md](docs/formats.md) and decided in
@@ -106,10 +128,12 @@ Or simply:
 - [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
 - [ADR 0002 — Formats and tensors](docs/adr/0002-formats-and-tensors.md)
 - [ADR 0003 — Model freeze and tokenizer](docs/adr/0003-model-freeze-and-tokenizer.md)
-- [Architecture (M1 state)](docs/architecture.md)
+- [ADR 0004 — Text embeddings](docs/adr/0004-text-embeddings.md)
+- [Architecture (M2 state)](docs/architecture.md)
 - [Formats and binary primitives](docs/formats.md)
 - [Tokenizer and prompts](docs/tokenizer.md)
 - [Numerical parity and reference datasets](docs/model-parity.md)
+- [Text embedding benchmark baseline](docs/benchmarks.md)
 - [Frozen model manifest](fixtures/model/manifest.json)
 - [Fixtures policy](fixtures/README.md)
 

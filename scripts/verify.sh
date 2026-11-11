@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-# Full verification for milestone M1.
+# Full verification for milestone M2.
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test
+
+# The full-model parity test is heavy; run the fast suite first, then the
+# explicit release parity check when the frozen weights are present.
+SELDON_SKIP_MODEL_PARITY=1 cargo test
+
 cargo build --release --target aarch64-apple-darwin
+
+echo "--- text parity on the frozen model (optional) ---"
+REV="f9972ac22e696a105c482202646979e33e4b5a1e"
+if [ -f ".model-cache/$REV/model.safetensors" ]; then
+    cargo test --release --test text_embeddings real_model_parity -- --nocapture
+else
+    echo "skipping: .model-cache/$REV/model.safetensors is not present"
+fi
 
 echo "--- Cargo graph (must be reduced to the root crate) ---"
 cargo_tree="$(cargo tree --edges normal,build,dev)"
@@ -27,4 +39,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M1 verification passed."
+echo "M2 verification passed."

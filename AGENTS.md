@@ -8,7 +8,7 @@
 
 A step is complete only if **its tests pass, its results are reproducible, and no regression is observed in the scope already validated**. A successful compilation is not proof. Never declare a modality "supported" if it only returns a vector computed from a file name or a textual marker.
 
-State at the time of writing (2026-11-11): milestone **M0** is complete; milestone **M1** is implemented on branch `feat/m1-formats-tensors` with the bounded reader, SHA-256, BF16 conversion, strict JSON, Safetensors reader, FP32 tensors, scalar kernels, frozen model manifest, exact BPE tokenizer, and official prompt prefixes, all tested. Inference is not implemented yet; no modality is supported and no fake result is returned.
+State at the time of writing (2026-11-11): milestone **M0** is complete; milestone **M1** is complete on `main` with the bounded reader, SHA-256, BF16 conversion, strict JSON, Safetensors reader, FP32 tensors, scalar kernels, frozen model manifest, exact BPE tokenizer, and official prompt prefixes, all tested. Milestone **M2** is implemented on branch `feat/m2-text-embeddings`: strict text configuration and weight loading, the full 24-layer EmbeddingGemma 2 text encoder, per-layer embeddings, bidirectional sliding/full grouped-query attention, layer-specific RoPE, pooling, the 512 to 768 projection, Matryoshka dimensions, the CLI `embed` command, and a tiny official model fixture plus full-model parity tests. Text embeddings are validated against official goldens. Image and audio are not implemented; no fake result is returned.
 
 ## 1. Mission and scope
 
