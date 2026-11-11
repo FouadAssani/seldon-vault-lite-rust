@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full verification for milestone M2.
+# Full verification for milestone M3.
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
@@ -39,4 +39,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M2 verification passed."
+echo "M3 verification passed."

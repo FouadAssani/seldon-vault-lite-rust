@@ -1,100 +1,115 @@
-# Architecture — milestone M2 state
+# Architecture — milestone M3 state
 
 ## Purpose
 
-This document describes the repository organization at milestone M2 and the
+This document describes the repository organization at milestone M3 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, or ADR 0004, which are authoritative for foundational,
-format, model, and text-embedding decisions.
+ADR 0002, ADR 0003, ADR 0004, or ADR 0005, which are authoritative for
+foundational, format, model, text-embedding, and storage/index decisions.
 
 ## Current state
 
 The repository contains:
 
-```text
-Cargo.toml              # zero dependencies
-Cargo.lock              # reproducible locking
-rust-toolchain.toml     # stable, clippy, rustfmt, ARM64
-.cargo/config.toml      # aarch64-apple-darwin target, macOS 11.0
-src/
-├── main.rs             # translates the CLI result into an exit code
-├── lib.rs              # version, target, frozen revision constants
-├── error.rs            # central error type
-├── cli/mod.rs          # version, help, and embed
-├── binary/
-│   ├── mod.rs
-│   ├── reader.rs       # bounded byte reader and file cap
-│   ├── sha256.rs       # streaming SHA-256
-│   ├── bf16.rs         # BF16 <-> FP32 conversion
-│   └── safetensors.rs  # strict read-only Safetensors reader
-├── json/mod.rs         # strict bounded JSON parser
-├── model/
-│   ├── mod.rs
-│   ├── config.rs       # strict text configuration and tensor inventory
-│   ├── weights.rs      # validated FP32 text weight loader
-│   ├── text.rs         # EmbeddingGemma 2 text forward pass
-│   ├── prompt.rs       # official prompt prefixes
-│   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
-└── tensor/
-    ├── mod.rs
-    ├── dtype.rs        # F32/BF16 dtype policy
-    ├── shape.rs        # validated shapes and strides
-    ├── owned.rs        # owned FP32 tensors and views
-    └── kernels.rs      # scalar reference kernels and model operations
-tests/
-├── cli.rs              # binary integration tests, including embed
-├── formats.rs          # public API format/tensor integration tests
-├── text_embeddings.rs  # tiny and full-model text parity tests
-└── tokenizer.rs        # golden tokenizer and manifest parity tests
-docs/
-├── adr/0001-foundations.md
-├── adr/0002-formats-and-tensors.md
-├── adr/0003-model-freeze-and-tokenizer.md
-├── adr/0004-text-embeddings.md
-├── architecture.md
-├── formats.md
-├── model-parity.md
-└── tokenizer.md
-fixtures/
-├── README.md
-├── formats/
-│   └── mini.safetensors # deterministic format fixture
-├── model/
-│   ├── manifest.json    # frozen revision, sizes, SHA-256, prompts
-│   ├── text_golden.json # eight text cases and a layer probe
-│   └── tiny_text/       # complete 3-layer official model and golden outputs
-└── tokenizer/
-    ├── golden.json      # official token ids for the golden corpus
-    └── mini_tokenizer.json # reduced tokenizer for reproducible tests
-tools/
-└── model-packer/
-    └── README.md       # role planned at the packaging milestone
-scripts/
-└── verify.sh           # full milestone quality gate
-```
+    Cargo.toml              # zero dependencies; Rust 1.89 minimum
+    Cargo.lock              # reproducible locking
+    rust-toolchain.toml     # stable, clippy, rustfmt, ARM64
+    .cargo/config.toml      # aarch64-apple-darwin target, macOS 11.0
+    src/
+    ├── main.rs             # translates the CLI result into an exit code
+    ├── lib.rs              # version, target, frozen revision constants
+    ├── error.rs            # central error type
+    ├── cli/mod.rs          # version, help, embed, index, search, verify
+    ├── binary/
+    │   ├── mod.rs
+    │   ├── reader.rs       # bounded byte reader and file cap
+    │   ├── sha256.rs       # streaming SHA-256
+    │   ├── bf16.rs         # BF16 <-> FP32 conversion
+    │   └── safetensors.rs  # strict read-only Safetensors reader
+    ├── json/mod.rs         # strict bounded JSON parser and serializer
+    ├── model/
+    │   ├── mod.rs
+    │   ├── config.rs       # strict text configuration and tensor inventory
+    │   ├── weights.rs      # validated FP32 text weight loader
+    │   ├── text.rs         # EmbeddingGemma 2 text forward pass
+    │   ├── prompt.rs       # official prompt prefixes
+    │   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
+    ├── storage/
+    │   ├── mod.rs
+    │   ├── checksum.rs     # CRC-32/ISO-HDLC
+    │   ├── codec.rs        # bounded little-endian encoder/decoder
+    │   ├── model.rs        # documents, chunks, metadata, transactions
+    │   ├── journal.rs      # framed records, append, scan, recovery
+    │   └── store.rs        # lock, replay, put/delete, verify
+    ├── index/
+    │   ├── mod.rs          # filters, requests, hits, hybrid index
+    │   ├── tokenize.rs     # deterministic Unicode tokenizer
+    │   ├── lexical.rs      # BM25 inverted index
+    │   ├── vector.rs       # exact cosine search
+    │   └── hybrid.rs       # Reciprocal Rank Fusion
+    └── tensor/
+        ├── mod.rs
+        ├── dtype.rs        # F32/BF16 dtype policy
+        ├── shape.rs        # validated shapes and strides
+        ├── owned.rs        # owned FP32 tensors and views
+        └── kernels.rs      # scalar reference kernels and model operations
+    tests/
+    ├── cli.rs              # binary integration tests
+    ├── formats.rs          # public API format/tensor integration tests
+    ├── text_embeddings.rs  # tiny and full-model text parity tests
+    └── tokenizer.rs        # golden tokenizer and manifest parity tests
+    docs/
+    ├── adr/0001-foundations.md
+    ├── adr/0002-formats-and-tensors.md
+    ├── adr/0003-model-freeze-and-tokenizer.md
+    ├── adr/0004-text-embeddings.md
+    ├── adr/0005-persistent-storage-and-hybrid-search.md
+    ├── architecture.md
+    ├── formats.md
+    ├── storage.md
+    ├── model-parity.md
+    └── tokenizer.md
+    fixtures/
+    ├── README.md
+    ├── formats/
+    │   └── mini.safetensors # deterministic format fixture
+    ├── model/
+    │   ├── manifest.json    # frozen revision, sizes, SHA-256, prompts
+    │   ├── text_golden.json # eight text cases and a layer probe
+    │   └── tiny_text/       # complete 3-layer official model and golden outputs
+    └── tokenizer/
+        ├── golden.json      # official token ids for the golden corpus
+        └── mini_tokenizer.json # reduced tokenizer for reproducible tests
+    tools/
+    └── model-packer/
+        └── README.md       # role planned at the packaging milestone
+    scripts/
+        └── verify.sh       # full milestone quality gate
 
-No `api`, `media`, `index`, `storage`, or `jobs` module is created
-empty. They will appear with their first testable feature, at the corresponding
-milestone. Image and audio inference are not implemented yet.
+No api, media, or jobs module is created empty. They will appear with their
+first testable feature, at the corresponding milestone. Image and audio
+inference are not implemented yet. Snapshots and compaction are not
+implemented yet; the journal is replayed in full on open.
 
 ## Layers and dependencies
 
-The `seldon_vault_lite` library is the testable root; the `main.rs` binary
-only calls the CLI and converts errors into exit codes. Dependencies point
-downward:
+The seldon_vault_lite library is the testable root; main.rs only calls the CLI
+and converts errors into exit codes. Dependencies point downward:
 
-```text
-cli / api  ->  model / index / storage  ->  binary / tensor / media  ->  error
-```
+    cli / api  ->  model / index / storage  ->  binary / tensor / media  ->  error
 
 Rules:
 
-- `error` depends on no other internal module.
-- `json` depends only on `error`.
-- `binary` depends on `error`, `json`, and `tensor`.
-- `tensor` depends only on `error`.
-- `model` depends on `binary`, `json`, `tensor`, and `error`; it does
-  not depend on storage or the HTTP API.
+- error depends on no other internal module.
+- json depends only on error.
+- binary depends on error, json, and tensor.
+- tensor depends only on error.
+- storage depends on binary (bounded file reads) and error; it does not depend
+  on the model, index, CLI, or HTTP API.
+- index depends on storage and error; it does not depend on the model or CLI.
+- model depends on binary, json, tensor, and error; it does not depend on
+  storage or the HTTP API.
+- cli depends on model, index, storage, json, and error.
 - Parsers do not depend on inference layers.
 - Storage does not depend on the HTTP API.
 - No module depends on a third-party crate.
@@ -103,97 +118,143 @@ Rules:
 
 | Command | Effect | Output | Code |
 |---|---|---|---|
-| `version` | prints name, version, target | stdout | 0 |
-| `help` | prints help, commands, and codes | stdout | 0 |
-| `embed` | loads the text model and prints one JSON vector | stdout | 0 |
-| `--version`, `-V` | alias of version | stdout | 0 |
-| `--help`, `-h` | alias of help | stdout | 0 |
+| version | prints name, version, target | stdout | 0 |
+| help | prints help, commands, and codes | stdout | 0 |
+| embed | loads the text model and prints one JSON vector | stdout | 0 |
+| index | ingests a strict JSONL document file into the store | stdout | 0 |
+| search | runs hybrid, lexical, or vector search | stdout | 0 |
+| verify | validates the committed journal prefix read-only | stdout | 0 |
+| --version, -V | alias of version | stdout | 0 |
+| --help, -h | alias of help | stdout | 0 |
 | no command | usage error | stderr | 2 |
 | unknown command | usage error | stderr | 2 |
 | extra argument | usage error | stderr | 2 |
 | non-UTF-8 argument | usage error | stderr | 2 |
-| invalid embed option | usage error | stderr | 2 |
+| invalid embed/index/search option | usage error | stderr | 2 |
 | dimension above the model output | usage error | stderr | 2 |
 | out-of-vocabulary token id | corruption error | stderr | 1 |
+| malformed JSONL or unknown field | usage or corruption error | stderr | 1 or 2 |
 | model or weight loading failure | execution error | stderr | 1 |
+| storage lock contention | I/O error (WouldBlock) | stderr | 1 |
+| journal corruption | corruption error | stderr | 1 |
 | write failure | execution error | stderr (best-effort) | 1 |
 | closed pipe | normal end | — | 0 |
 
-`embed` accepts `--model-dir`, `--prompt`, `--dim`, `--text`, `--ids`,
-and positional text. With no text or ids, it reads standard input with a 1 MiB
-cap. Text is prefixed with the official prompt before tokenization; `--ids`
-bypasses the tokenizer and the prefix for diagnostics.
+embed accepts --model-dir, --prompt, --dim, --text, --ids, and positional
+text. With no text or ids, it reads standard input with a 1 MiB cap. Text is
+prefixed with the official prompt before tokenization; --ids bypasses the
+tokenizer and the prefix for diagnostics.
 
-`serve`, `index`, `search`, and `verify` remain explicitly refused until
-implemented. No stub returns a fake result.
+index requires --data-dir and one JSONL file or -. Each line is an object with
+id, text, optional title, optional source, and optional metadata. Duplicate
+ids, unknown fields, malformed JSON, oversized lines, and more than 10,000
+documents are rejected before any write. Embeddings use the Document prompt
+and the frozen tokenizer. A diagnostic --ids mode accepts an ids array and
+uses TextModel::embed_ids instead of the tokenizer; text is still stored for
+BM25.
+
+search requires --data-dir and accepts --model-dir, --dim, --mode
+hybrid|lexical|vector, --limit, --offset, repeatable --filter KEY=VALUE, and a
+diagnostic --ids. Lexical mode does not load the model. Vector and hybrid modes
+embed the query with the SearchQuery prompt. The output is a JSON array with
+chunk id, document id, ordinal, score, lexical and vector ranks, title,
+source, modality, text, and metadata.
+
+verify requires --data-dir and prints records, documents, chunks, and
+truncated_bytes. It does not acquire the writer lock and does not modify the
+journal.
+
+serve remains explicitly refused until M6. No stub returns a fake result.
 
 ## Error model
 
-`src/error.rs` defines `Error` and `Result<T>`. The variants are:
+src/error.rs defines Error and Result<T>. The variants are:
 
-- `Usage` (exit code 2);
-- `Io` (exit code 1);
-- `Corrupt` (exit code 1);
-- `LimitExceeded` (exit code 1);
-- `Unsupported` (exit code 1);
-- `Internal` (exit code 1).
+- Usage (exit code 2);
+- Io (exit code 1);
+- Corrupt (exit code 1);
+- LimitExceeded (exit code 1);
+- Unsupported (exit code 1);
+- Internal (exit code 1).
 
-`Display` produces a user-facing message; `source()` exposes the technical
-cause for I/O errors. The HTTP API will reuse the same taxonomy to choose
-statuses.
+Display produces a user-facing message; source() exposes the technical cause
+for I/O errors. The HTTP API will reuse the same taxonomy to choose statuses.
 
 ## Format boundaries
 
 ### Binary reader
 
-`ByteReader` returns borrowed slices, uses checked arithmetic for every range,
-and allocates only through `read_vec` with an explicit cap.
-`read_file_bounded` checks metadata and reads through `Read::take`.
+ByteReader returns borrowed slices, uses checked arithmetic for every range,
+and allocates only through read_vec with an explicit cap. read_file_bounded
+checks metadata and reads through Read::take.
 
 ### JSON
 
-`src/json` is a strict RFC 8259 subset with configurable caps on input size,
+src/json is a strict RFC 8259 subset with configurable caps on input size,
 depth, string size, container entries, and total values. It rejects duplicate
 keys, trailing commas, non-finite numbers, lone surrogates, and trailing
-content. Objects are ordered with a `BTreeMap`.
+content. Objects are ordered with a BTreeMap. The serializer emits compact,
+deterministic JSON with BTreeMap key order and rejects non-finite numbers.
 
 ### Safetensors
 
-`SafetensorsFile` borrows the file bytes, validates the header and every
-tensor range, rejects overlaps, and exposes FP32 decoding and a SHA-256
-fingerprint. FP16 is rejected because activations must stay FP32.
+SafetensorsFile borrows the file bytes, validates the header and every tensor
+range, rejects overlaps, and exposes FP32 decoding and a SHA-256 fingerprint.
+FP16 is rejected because activations must stay FP32.
 
 ### Tensors and kernels
 
-`Shape` validates rank, dimensions, and element count at construction.
-`Tensor` is owned FP32 data capped at `2^30` elements. `TensorView` borrows
-without copying. `src/tensor/kernels.rs` is the deterministic scalar
-reference. M2 adds:
+Shape validates rank, dimensions, and element count at construction. Tensor is
+owned FP32 data capped at 2^30 elements. TensorView borrows without copying.
+src/tensor/kernels.rs is the deterministic scalar reference. M2 adds linear
+projection, per-row RMSNorm, mean pooling, truncation with renormalization,
+RoPE, and bidirectional grouped-query attention with an optional sliding
+window. SIMD will be compared against this path before any optimization is
+accepted.
 
-- linear projection against an [out, in] weight matrix;
-- per-row RMSNorm with and without a learned scale;
-- mean pooling;
-- truncation followed by renormalization;
-- RoPE with precomputed inverse frequencies;
-- bidirectional grouped-query attention with an optional sliding window.
+### Storage and journal
 
-SIMD will be compared against this path before any optimization is accepted.
+The storage format is documented in docs/storage.md and decided in ADR 0005.
+The journal is an append-only sequence of records with magic, format version,
+record type, sequence, payload length, header CRC, payload CRC, payload, and a
+footer. The footer is written last; a record is committed only when all fields
+validate. A torn tail is truncated; committed corruption is reported.
+
+Transactions are bounded and atomic. The store applies them in memory only
+after the record is synchronized. Replay validates schema version, sequence,
+chunk-id order, document references, duplicate ordinals, embedding dimension,
+and normalized embeddings before accepting a transaction.
+
+The store holds an exclusive std file lock. Writer locking is serialized at
+M3; verify reads without the lock and without truncation. Snapshots and
+compaction are deferred, so the journal is replayed in full.
+
+### Index
+
+src/index rebuilds a BM25 inverted index and an exact vector view from the
+committed store. Filters are applied before ranking. Lexical scores use BM25
+with k1 = 1.2 and b = 0.75. Vector scores use cosine similarity with f64
+accumulation. Hybrid scores use RRF with k = 60. All rankings break ties by
+ascending chunk id, and pagination slices the deterministic ranking.
+
+No approximate index is introduced at M3. The exact vector path is the
+correctness oracle for any future HNSW work.
 
 ## Model boundary
 
 The model is frozen at revision
-`f9972ac22e696a105c482202646979e33e4b5a1e`. The manifest is
-`fixtures/model/manifest.json`.
+f9972ac22e696a105c482202646979e33e4b5a1e. The manifest is
+fixtures/model/manifest.json.
 
 ### Configuration
 
-`model::config::TextConfig` parses the composite `config.json` (using its
-`text_config` member) or a standalone text configuration. It rejects an
-unknown model type, an unsupported dtype, FP16, a non-GELU activation,
-attention bias, non-zero attention dropout, an unknown layer type, an unknown
-RoPE type, inconsistent layer counts, a non-full last layer, and mismatched
-head layouts. It exposes the expected tensor inventory so the loader can reject
-a wrong weight file before decoding.
+model::config::TextConfig parses the composite config.json (using its
+text_config member) or a standalone text configuration. It rejects an unknown
+model type, an unsupported dtype, FP16, a non-GELU activation, attention bias,
+non-zero attention dropout, an unknown layer type, an unknown RoPE type,
+inconsistent layer counts, a non-full last layer, and mismatched head layouts.
+It exposes the expected tensor inventory so the loader can reject a wrong
+weight file before decoding.
 
 Limits include 16,384 hidden size, 128 layers, 128 heads, 1,024 head
 dimension, 65,536 intermediate size, 1,000,000 vocabulary entries, 16,384
@@ -201,22 +262,22 @@ embedding dimension, and 1,048,576 positions.
 
 ### Weight loading
 
-`model::weights::TextWeights` reads the frozen Safetensors file with a 4 GiB
-cap, ignores audio and vision tensors, accepts only the 413
-`language_model.` text tensors, validates every name and shape, rejects extra
-or missing text tensors and non-finite values, and converts BF16 or F32
-storage to FP32 once. The source SHA-256 is retained for manifest comparison.
-The FP32 weight set is capped at `2^30` elements.
+model::weights::TextWeights reads the frozen Safetensors file with a 4 GiB cap,
+ignores audio and vision tensors, accepts only the 413 language_model. text
+tensors, validates every name and shape, rejects extra or missing text tensors
+and non-finite values, and converts BF16 or F32 storage to FP32 once. The
+source SHA-256 is retained for manifest comparison. The FP32 weight set is
+capped at 2^30 elements.
 
 ### Tokenizer
 
-`model::tokenizer::Tokenizer` loads the frozen tokenizer.json with bounded
-JSON limits and validates the BPE pipeline before use:
+model::tokenizer::Tokenizer loads the frozen tokenizer.json with bounded JSON
+limits and validates the BPE pipeline before use:
 
 - model type BPE, byte fallback, fuse_unk, no ignore_merges;
-- normalizer replaces a space with `▁`;
-- pre-tokenizer splits on a space with `MergedWithPrevious`;
-- post-processor prepends `<bos>` and appends `<eos>`;
+- normalizer replaces a space with the SentencePiece marker;
+- pre-tokenizer splits on a space with MergedWithPrevious;
+- post-processor prepends <bos> and appends <eos>;
 - decoder applies Replace, ByteFallback, and Fuse.
 
 Encoding matches added tokens in raw text, normalizes spaces, starts from
@@ -227,14 +288,14 @@ corpus.
 
 ### Prompts
 
-`model::prompt` exposes the official prefixes and a `Prompt` enum.
-`Prompt::from_name` parses the official names. A query and a document are
-distinct roles; a test compares every constant with the frozen manifest.
+model::prompt exposes the official prefixes and a Prompt enum. Prompt::from_name
+parses the official names. A query and a document are distinct roles; a test
+compares every constant with the frozen manifest.
 
 ### Text inference
 
-`model::text::TextModel` owns the configuration and FP32 weights.
-`TextEmbedder` adds the tokenizer. The forward pass follows ADR 0004:
+model::text::TextModel owns the configuration and FP32 weights. TextEmbedder
+adds the tokenizer. The forward pass follows ADR 0004:
 
 1. scaled token embedding;
 2. projection-only PLE, scaled, reshaped to [sequence, layers, 512], and
@@ -249,21 +310,21 @@ distinct roles; a test compares every constant with the frozen manifest.
 
 The model rejects empty sequences, ids outside the vocabulary, sequences above
 the 8,192-token context, and dimensions above the model output. Activation
-buffers are capped at `2^28` elements. The model is immutable and
-`Send + Sync`; repeated calls are deterministic.
+buffers are capped at 2^28 elements. The model is immutable and Send + Sync;
+repeated calls are deterministic.
 
 ### Model files
 
-Model files live in `.model-cache/<revision>/`, which is ignored by Git.
-Weights are never committed. The manifest records the weights' SHA-256 from the
-Hugging Face LFS object id. The tiny official model fixture is committed
-because it is 47.5 KiB, not model-scale data.
+Model files live in .model-cache/<revision>/, which is ignored by Git. Weights
+are never committed. The manifest records the weights' SHA-256 from the Hugging
+Face LFS object id. The tiny official model fixture is committed because it is
+47.5 KiB, not model-scale data.
 
 ## Trust boundaries
 
 Everything coming from outside is untrusted: CLI arguments, files, HTTP bodies,
-JSON, Safetensors headers, tokenizer documents, images, audio, and metadata.
-Each boundary must:
+JSON, Safetensors headers, tokenizer documents, images, audio, metadata, and
+the journal. Each boundary must:
 
 1. validate types, lengths, offsets, and versions before allocation;
 2. cap dimensions and memory;
@@ -271,51 +332,47 @@ Each boundary must:
 4. return a typed error, never a panic.
 
 The FP32 scalar path remains the correctness reference for all numerical
-computations.
+computations. CRC-32 detects accidental journal corruption; it is not an
+authentication mechanism against a local attacker with write access to the data
+directory.
 
 ## Build configuration
 
-- Target: `aarch64-apple-darwin` (enforced by `.cargo/config.toml`).
-- Deployment: `MACOSX_DEPLOYMENT_TARGET=11.0` (forced).
-- `rust-toolchain.toml`: stable toolchain, `clippy`, `rustfmt`.
-- `Cargo.toml`: no dependencies; release profile `opt-level = 3`,
-  `lto = "thin"`, `codegen-units = 1`; test profile `opt-level = 2` so
-  the full-model parity suite is practical.
+- Target: aarch64-apple-darwin (enforced by .cargo/config.toml).
+- Deployment: MACOSX_DEPLOYMENT_TARGET=11.0 (forced).
+- rust-toolchain.toml: stable toolchain, clippy, rustfmt.
+- Cargo.toml: no dependencies; rust-version 1.89 because storage uses std file
+  locking; release profile opt-level = 3, lto = "thin", codegen-units = 1;
+  test profile opt-level = 2 so the full-model parity suite is practical.
 
 ## Verification
 
-```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo build --release --target aarch64-apple-darwin
-cargo tree --edges normal,build,dev
-otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
-vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
-```
+    cargo fmt --check
+    cargo clippy --all-targets -- -D warnings
+    cargo test
+    cargo build --release --target aarch64-apple-darwin
+    cargo tree --edges normal,build,dev
+    otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
+    vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
 
 The full-model parity test is:
 
-```bash
-cargo test --release --test text_embeddings real_model_parity -- --nocapture
-```
+    cargo test --release --test text_embeddings real_model_parity -- --nocapture
 
 It runs automatically when the model cache is present. Set
-`SELDON_SKIP_MODEL_PARITY=1` to skip it during a quick check.
+SELDON_SKIP_MODEL_PARITY=1 to skip it during a quick check.
 
-`scripts/verify.sh` groups these commands and fails if the Cargo graph
-contains a dependency or if `minos` is not 11.0.
+scripts/verify.sh groups these commands and fails if the Cargo graph contains
+a dependency or if minos is not 11.0.
 
 ## Next steps
 
-1. **M2**: complete for text embeddings, layer-output parity, pooling, the
-   512 to 768 projection, and Matryoshka dimensions. Image and audio are not
-   claimed.
-2. **M3**: persistent storage, BM25/KNN index, and RRF fusion.
-3. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
-4. **M6**: HTTP API, bounded job queue, and hardening.
-5. **M7**: NEON and macOS packaging.
-6. **M8/M9**: final macOS validation, then Linux port.
+1. **M3 follow-up**: snapshots, safe compaction, crash injection at every
+   snapshot write step, and concurrent read-only opening.
+2. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
+3. **M6**: HTTP API, bounded job queue, and hardening.
+4. **M7**: NEON and macOS packaging.
+5. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and
 without replaying the golden tests.

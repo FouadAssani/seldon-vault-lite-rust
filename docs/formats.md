@@ -1,9 +1,10 @@
 # Formats and binary primitives
 
-This document describes the formats implemented through milestone M2 and
+This document describes the formats implemented through milestone M3 and
 the validation rules that protect the product from hostile input. ADR 0002 is
-the format decision record and ADR 0004 covers the text-embedding numerical
-path; this document is the operational reference.
+the binary format decision record, ADR 0004 covers the text-embedding numerical
+path, and ADR 0005 covers persistent storage and hybrid search; this document
+is the operational reference.
 
 ## Trust boundary
 
@@ -52,6 +53,13 @@ Rejected:
 | Total values | 1,000,000 | bound parser work |
 
 Limits are configurable with `json::Limits`.
+
+### Serialization
+
+`json::to_string` emits compact deterministic JSON. Object keys follow the
+BTreeMap order; strings are escaped for quotes, backslashes, and control
+characters. A non-finite float is rejected as an internal invariant error
+because JSON cannot represent NaN or infinity.
 
 ### Numbers
 
@@ -164,6 +172,20 @@ SHA-256:
 `caca3b030faeb4ded52275d54c2fca0f2ee0d6b1aeeb8ab1819e0785b1f89ca7`
 
 The fixture is not a model parity fixture. It proves format handling only.
+
+## Storage journal
+
+Milestone M3 adds an append-only journal with framed records, CRC-32 header and
+payload checksums, a written-last footer, monotonic sequence numbers, atomic
+transactions, fsync at commit, and deterministic replay. The complete layout,
+transaction payload schema, recovery rules, and limits are documented in
+[docs/storage.md](storage.md) and decided in
+[ADR 0005](adr/0005-persistent-storage-and-hybrid-search.md).
+
+The journal is treated as hostile input. A torn tail is truncated; committed
+corruption, sequence gaps, unknown versions, invalid transaction semantics, and
+non-normalized stored embeddings are reported as typed errors rather than
+silently accepted.
 
 ## Internal weight container (planned)
 
