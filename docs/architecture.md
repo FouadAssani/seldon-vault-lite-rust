@@ -1,13 +1,13 @@
-# Architecture — milestone M5 state
+# Architecture — milestone M6 state
 
 ## Purpose
 
 This document describes the repository organization at milestone M5 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
 ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, ADR 0008,
-ADR 0009, or ADR 0010, which are authoritative for foundational, format, model,
-text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE, JPEG, image
-preprocessing/vision, and WAV/audio decisions.
+ADR 0009, ADR 0010, or ADR 0011, which are authoritative for foundational,
+format, model, text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE,
+JPEG, image preprocessing/vision, WAV/audio, and HTTP API/jobs decisions.
 
 ## Current state
 
@@ -21,7 +21,15 @@ The repository contains:
     ├── main.rs             # translates the CLI result into an exit code
     ├── lib.rs              # version, target, frozen revision constants
     ├── error.rs            # central error type
-    ├── cli/mod.rs          # version, help, embed, index, search, verify, compact
+    ├── cli/mod.rs          # version, help, serve, embed, index, search, verify, compact
+    ├── api/
+    │   ├── mod.rs          # public server configuration and running-server surface
+    │   ├── base64.rs       # strict bounded base64 decoder for media
+    │   ├── engine.rs       # text model at startup, lazy vision/audio towers
+    │   ├── http.rs         # strict HTTP/1.1 parser and response writer
+    │   └── server.rs       # accept loop, routes, auth, limits, and ingestion task
+    ├── jobs/
+    │   └── mod.rs          # bounded queue, workers, cancellation, job snapshots
     ├── binary/
     │   ├── mod.rs
     │   ├── reader.rs       # bounded byte reader and file cap
@@ -64,7 +72,7 @@ The repository contains:
     │   ├── lexical.rs      # BM25 inverted index
     │   ├── vector.rs       # exact cosine search
     │   └── hybrid.rs       # Reciprocal Rank Fusion
-    └── tensor/
+    ├── tensor/
         ├── mod.rs
         ├── dtype.rs        # F32/BF16 dtype policy
         ├── shape.rs        # validated shapes and strides
@@ -80,6 +88,7 @@ The repository contains:
     ├── audio_embeddings.rs # audio embedding and text-to-audio ranking tests
     ├── audio_tiny.rs       # tiny official audio tower and text-connection tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
+    ├── http_api.rs         # real-server HTTP/1.1 integration tests
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
     ├── adr/0001-foundations.md
@@ -92,6 +101,8 @@ The repository contains:
     ├── adr/0008-native-jpeg-decoding.md
     ├── adr/0009-image-preprocessing-and-vision.md
     ├── adr/0010-native-wav-and-audio-embeddings.md
+    ├── adr/0011-http-api-and-jobs.md
+    ├── api.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -128,24 +139,27 @@ The repository contains:
         ├── generate_audio_goldens.py # laboratory-only audio reference generator
         └── generate_tiny_audio_fixture.py # laboratory-only tiny audio model generator
 
-No api or jobs module is created empty. They will appear with their first
-testable feature, at the corresponding milestone. The media module contains the
-native zlib/DEFLATE decoder, the PNG decoder, the baseline JPEG decoder, the
-shared decoded-image type, the official image preprocessing pipeline, the WAV
-decoder, mono conversion and resampling, and the official log-mel processor. The
-model module contains the text encoder, the vision tower, the audio tower, and
-the image and audio embedders that connect them to the text space. Text, image,
-and audio embeddings are implemented and validated against the official
-reference; text, image, and audio documents are stored, indexed, and searched
-through the CLI. Snapshots and compaction are implemented; see ADR 0006. The
-HTTP API, jobs, HNSW, and MP3 remain future work.
+The api module contains the strict HTTP/1.1 parser and writer, the server
+accept loop and routes, the bounded base64 media decoder, and the model engine
+that loads text at startup and vision/audio lazily. The jobs module contains the
+bounded queue, worker threads, cooperative cancellation, job snapshots, and
+retained history. The media module contains the native zlib/DEFLATE decoder, the
+PNG decoder, the baseline JPEG decoder, the shared decoded-image type, the
+official image preprocessing pipeline, the WAV decoder, mono conversion and
+resampling, and the official log-mel processor. The model module contains the
+text encoder, the vision tower, the audio tower, and the image and audio
+embedders that connect them to the text space. Text, image, and audio embeddings
+are implemented and validated against the official reference; text, image, and
+audio documents are stored, indexed, and searched through the CLI and the HTTP
+API. Snapshots and compaction are implemented; see ADR 0006. The HTTP API and
+jobs are implemented; see ADR 0011. HNSW and MP3 remain future work.
 
 ## Layers and dependencies
 
 The seldon_vault_lite library is the testable root; main.rs only calls the CLI
 and converts errors into exit codes. Dependencies point downward:
 
-    cli / api  ->  model / index / storage  ->  binary / tensor / media  ->  error
+    cli / api  ->  jobs / model / index / storage  ->  binary / tensor / media  ->  error
 
 Rules:
 
@@ -160,9 +174,14 @@ Rules:
 - index depends on storage and error; it does not depend on the model or CLI.
 - model depends on binary, json, tensor, and error; it does not depend on
   storage or the HTTP API.
-- cli depends on model, index, storage, json, and error.
+- cli depends on api, model, index, storage, json, and error.
+- api depends on jobs, model, index, storage, json, media, and error.
+- jobs depends on error; it does not depend on the model or storage. The API
+  supplies tasks that hold shared store and engine handles.
+- api does not depend on cli.
 - Parsers do not depend on inference layers.
 - Storage does not depend on the HTTP API.
+- The HTTP parser does not depend on the model, storage, or index.
 - No module depends on a third-party crate.
 
 ## CLI contract
@@ -171,6 +190,7 @@ Rules:
 |---|---|---|---|
 | version | prints name, version, target | stdout | 0 |
 | help | prints help, commands, and codes | stdout | 0 |
+| serve | starts the local HTTP API and ingestion workers | JSON listening/stopped records | 0 |
 | embed | loads the text, image, or audio path and prints one JSON vector | stdout | 0 |
 | index | ingests a strict JSONL text/image/audio document file into the store | stdout | 0 |
 | search | runs hybrid, lexical, or vector search over stored documents | stdout | 0 |
@@ -234,7 +254,61 @@ compact requires --data-dir and prints snapshot_records, snapshot_bytes,
 documents, chunks, and data_dir. It opens the writer store, materializes the
 current state into snapshot.sv, and replaces journal.log with an empty file.
 
-serve remains explicitly refused until M6. No stub returns a fake result.
+serve requires --data-dir and accepts --bind, --model-dir, --dim,
+--vision-tokens, --token, --max-connections, --request-timeout-ms,
+--max-body-bytes, --queue-capacity, and --job-workers. It validates the
+configuration, loads the text model, opens the store, binds the listener, prints
+one JSON listening record, and serves until a loopback POST /v1/shutdown. No
+stub returns a fake result.
+
+## HTTP API
+
+The M6 service is documented in docs/api.md and ADR 0011. It binds to
+127.0.0.1:8080 by default. A non-loopback bind requires an access token of at
+least 16 bytes. When a token is set, every request must present a bearer token
+or X-API-Key; the comparison is constant-time. There is no TLS implementation,
+so the service must not be exposed directly to the Internet.
+
+The server accepts HTTP/1.1 only, one request per connection, with a strict
+request-line and header parser. Request-line, header-line, total-header, header
+count, and body caps are checked before allocation. Transfer-Encoding,
+Expect, absolute request targets, fragments, obsolete line folding, bare LF,
+duplicate Host/Content-Length/Authorization/Expect headers, and unknown methods
+are rejected. POST requires application/json; unknown JSON fields are rejected.
+
+Routes:
+
+- GET /health: process liveness;
+- GET /ready: storage and text-model readiness, declared and loaded modalities;
+- GET /v1/models: model id, revision, dimensions, modalities, and limits;
+- GET /v1/stats: request, connection, job, storage, and recovery counters;
+- POST /v1/embeddings: text, token-id, image, or audio embedding;
+- POST /v1/documents: validates and enqueues asynchronous ingestion;
+- DELETE /v1/documents/{id}: idempotent document deletion;
+- POST /v1/search: lexical, vector, or hybrid search with modality and metadata
+  filters;
+- GET /v1/jobs/{id}: ingestion status;
+- DELETE /v1/jobs/{id}: cooperative cancellation;
+- POST /v1/shutdown: loopback-only graceful shutdown.
+
+Connections and job workers are bounded. A full connection limit returns 503
+after draining the request; a full ingestion queue returns 429. Ingestion tasks
+check a cancellation flag before and after the embedding phase and before the
+storage write. Searches open a ReadOnlyStore view and rebuild the in-memory
+index without holding the writer lock. Writes commit one atomic transaction
+through a Mutex<Store>.
+
+The text model is loaded at startup. The tokenizer is optional: a model without
+tokenizer.json still serves explicit token-id embeddings and returns 501 for
+text input. Vision and audio towers are loaded lazily on first use, behind a
+mutex; their configurations are validated at startup so /v1/models does not
+claim an undeclared modality. The tiny audio fixture has no tokenizer; its
+AudioEmbedder accepts the absent tokenizer for audio-only use and returns 501
+for text embedding through that embedder.
+
+Media is accepted only as strict bounded base64 in the JSON body, never as a
+client-supplied path. PNG versus JPEG is detected from the decoded bytes. The
+native decoders apply their own caps before preprocessing or inference.
 
 ## Error model
 
@@ -248,7 +322,9 @@ src/error.rs defines Error and Result<T>. The variants are:
 - Internal (exit code 1).
 
 Display produces a user-facing message; source() exposes the technical cause
-for I/O errors. The HTTP API will reuse the same taxonomy to choose statuses.
+for I/O errors. The HTTP API reuses the same taxonomy: Usage -> 400, Corrupt ->
+400, LimitExceeded -> 413, Unsupported -> 501, Io/Internal -> 500, with 503 for
+a saturated connection limit.
 
 ## Format boundaries
 
@@ -620,6 +696,19 @@ several clips. The short-tone parity case runs by default. Audio fixtures and
 their provenance are recorded in fixtures/media/README.md and
 fixtures/model/README.md.
 
+M6 adds unit tests for the strict HTTP parser and writer, base64 decoding, job
+queue lifecycle, cancellation, pending cap, configuration validation, route
+tables, token parsing, and constant-time token comparison. The HTTP integration
+suite starts the real server on an ephemeral loopback port and speaks raw
+HTTP/1.1 over std::net::TcpStream. It covers health, readiness, models, stats,
+token embeddings, audio embeddings and audio document ingestion on the tiny
+fixture, lexical/vector/hybrid search, metadata filters, Unicode JSON, percent-encoded
+deletion, duplicate-id job failure, bearer authentication, malformed requests,
+oversized bodies, transfer encoding, Expect, connection limits, slow-request
+timeouts, concurrent health requests, and graceful shutdown. Full-model text and
+image HTTP embedding tests are ignored because they load the frozen model; the
+existing text/image parity suites cover the numerical path.
+
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0.
 
@@ -640,7 +729,11 @@ a dependency or if minos is not 11.0.
    and audio-to-audio vector search are implemented and validated against the
    official reference. MP3, streaming audio, and broader audio ranking quality
    remain future work.
-4. **M6**: HTTP API, bounded job queue, and hardening.
+4. **M6**: implemented on branch feat/m6-http-api. Native HTTP/1.1 API, strict
+   parser and bounded base64 media input, bearer authentication for LAN binds,
+   bounded connections, asynchronous ingestion jobs with cooperative
+   cancellation, observability counters, and loopback graceful shutdown.
+   HNSW, TLS, keep-alive, and MP3 remain future work.
 5. **M7**: NEON and macOS packaging.
 6. **M8/M9**: final macOS validation, then Linux port.
 

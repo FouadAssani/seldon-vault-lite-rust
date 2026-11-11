@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full verification for milestone M5 (audio path).
+# Full verification for milestone M6 (HTTP API, jobs, and hardening).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
@@ -7,7 +7,8 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 
 # The full-model parity test is heavy; run the fast suite first, then the
-# explicit release parity check when the frozen weights are present.
+# explicit release parity check when the frozen weights are present. The fast
+# suite includes the HTTP API integration tests (tests/http_api.rs).
 SELDON_SKIP_MODEL_PARITY=1 cargo test
 
 cargo build --release --target aarch64-apple-darwin
@@ -47,4 +48,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M5 verification passed (audio path)."
+echo "M6 verification passed (HTTP API, jobs, and hardening)."

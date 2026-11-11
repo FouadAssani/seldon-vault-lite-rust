@@ -75,16 +75,20 @@ impl AudioEmbeddingOutput {
 pub struct AudioEmbedder {
     model: TextModel,
     audio: AudioModel,
-    tokenizer: Tokenizer,
+    tokenizer: Option<Tokenizer>,
     tokens: AudioSpecialTokens,
 }
 
 impl AudioEmbedder {
-    /// Loads the audio embedder from a model directory containing config.json,
-    /// model.safetensors, and tokenizer.json.
+    /// Loads the audio embedder from a model directory containing config.json
+    /// and model.safetensors, plus tokenizer.json when available.
     ///
     /// The Safetensors file is read once and shared by the text and audio
-    /// weight loaders. Both loaders validate their own tensor inventory.
+    /// weight loaders. Both loaders validate their own tensor inventory. When
+    /// tokenizer.json is present, every audio special token id is checked
+    /// against it. When it is absent, the ids declared by config.json are used
+    /// for audio-only embedding, and text embedding through this embedder
+    /// returns an unsupported error instead of pretending to tokenize.
     pub fn load(model_dir: &Path) -> Result<Self> {
         let config_bytes = read_file_bounded(&model_dir.join("config.json"), MAX_CONFIG_BYTES)?;
         let config_text = std::str::from_utf8(&config_bytes)
@@ -100,15 +104,24 @@ impl AudioEmbedder {
         let model = TextModel::new(text_config, text_weights)?;
         let audio = AudioModel::new(audio_config, audio_weights, model.config().hidden_size())?;
 
-        let tokenizer = Tokenizer::load(&model_dir.join("tokenizer.json"))?;
-        if tokenizer.vocab_size() != model.config().vocab_size() {
-            return Err(Error::corrupt(format!(
-                "tokenizer vocabulary has {} entries, model declares {}",
-                tokenizer.vocab_size(),
-                model.config().vocab_size()
-            )));
-        }
-        let tokens = parse_special_tokens(&config_value, &tokenizer)?;
+        let tokenizer_path = model_dir.join("tokenizer.json");
+        let tokenizer = match std::fs::metadata(&tokenizer_path) {
+            Ok(metadata) if metadata.is_file() => {
+                let tokenizer = Tokenizer::load(&tokenizer_path)?;
+                if tokenizer.vocab_size() != model.config().vocab_size() {
+                    return Err(Error::corrupt(format!(
+                        "tokenizer vocabulary has {} entries, model declares {}",
+                        tokenizer.vocab_size(),
+                        model.config().vocab_size()
+                    )));
+                }
+                Some(tokenizer)
+            }
+            Ok(_) => None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(Error::Io(error)),
+        };
+        let tokens = parse_special_tokens(&config_value, tokenizer.as_ref())?;
         Ok(Self {
             model,
             audio,
@@ -127,9 +140,9 @@ impl AudioEmbedder {
         &self.audio
     }
 
-    /// Frozen tokenizer.
-    pub fn tokenizer(&self) -> &Tokenizer {
-        &self.tokenizer
+    /// Frozen tokenizer, when the model directory provides one.
+    pub fn tokenizer(&self) -> Option<&Tokenizer> {
+        self.tokenizer.as_ref()
     }
 
     /// Special token ids used for audio prompts.
@@ -148,8 +161,13 @@ impl AudioEmbedder {
                 "embedding dimension {dimension} is outside 1..={embedding_dim}"
             )));
         }
+        let tokenizer = self.tokenizer.as_ref().ok_or_else(|| {
+            Error::unsupported(
+                "this model directory has no tokenizer.json; text embedding is unavailable",
+            )
+        })?;
         let full = prompt::apply(prompt, text);
-        let ids = self.tokenizer.encode(&full, true)?;
+        let ids = tokenizer.encode(&full, true)?;
         if ids.len() > MAX_TEXT_TOKENS {
             return Err(Error::limit_exceeded(format!(
                 "tokenized input has {} tokens, above the {MAX_TEXT_TOKENS}-token context",
@@ -222,7 +240,10 @@ impl AudioEmbedder {
     }
 }
 
-fn parse_special_tokens(config: &json::Value, tokenizer: &Tokenizer) -> Result<AudioSpecialTokens> {
+fn parse_special_tokens(
+    config: &json::Value,
+    tokenizer: Option<&Tokenizer>,
+) -> Result<AudioSpecialTokens> {
     let text = config
         .get("text_config")
         .ok_or_else(|| Error::corrupt("model configuration has no text_config"))?;
@@ -233,12 +254,14 @@ fn parse_special_tokens(config: &json::Value, tokenizer: &Tokenizer) -> Result<A
     let audio = required_token(config, "audio_token_id")?;
     let eoa = required_token(config, "eoa_token_index")?;
 
-    validate_token(tokenizer, "<bos>", bos, "bos_token_id")?;
-    validate_token(tokenizer, "<eos>", eos, "eos_token_id")?;
-    validate_token(tokenizer, "<pad>", pad, "pad_token_id")?;
-    validate_token(tokenizer, "<|audio>", boa, "boa_token_id")?;
-    validate_token(tokenizer, "<|audio|>", audio, "audio_token_id")?;
-    validate_token(tokenizer, "<audio|>", eoa, "eoa_token_index")?;
+    if let Some(tokenizer) = tokenizer {
+        validate_token(tokenizer, "<bos>", bos, "bos_token_id")?;
+        validate_token(tokenizer, "<eos>", eos, "eos_token_id")?;
+        validate_token(tokenizer, "<pad>", pad, "pad_token_id")?;
+        validate_token(tokenizer, "<|audio>", boa, "boa_token_id")?;
+        validate_token(tokenizer, "<|audio|>", audio, "audio_token_id")?;
+        validate_token(tokenizer, "<audio|>", eoa, "eoa_token_index")?;
+    }
 
     Ok(AudioSpecialTokens {
         bos,

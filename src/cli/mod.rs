@@ -14,8 +14,14 @@
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use crate::api::{
+    DEFAULT_BIND, DEFAULT_JOB_WORKERS, DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_CONNECTIONS,
+    DEFAULT_QUEUE_CAPACITY, DEFAULT_REQUEST_TIMEOUT_MS, Server, ServerConfig,
+};
 use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
 use crate::index::{Filters, Index, SearchHit, SearchMode, SearchRequest};
@@ -51,6 +57,7 @@ USAGE:
     r#" <COMMAND>
 
 COMMANDS:
+    serve      Starts the local HTTP/1.1 API and bounded ingestion workers
     embed      Embeds text, token ids, an image, or a WAV clip and prints a JSON vector
     index      Ingests JSONL documents into the persistent store
     search     Runs hybrid, lexical, or exact vector search
@@ -144,6 +151,30 @@ COMPACT:
     synchronized before the journal is replaced, so a crash leaves a
     recoverable state.
 
+SERVE:
+    serve --data-dir <DIR> [--bind <ADDR>] [--model-dir <DIR>] [--dim <N>]
+          [--vision-tokens <N>] [--token <TOKEN>]
+          [--max-connections <N>] [--request-timeout-ms <MS>]
+          [--max-body-bytes <N>] [--queue-capacity <N>] [--job-workers <N>]
+
+    --data-dir    Data directory holding the journal and snapshots
+    --bind        Listen address (default: 127.0.0.1:8080). A non-loopback
+                  bind requires --token of at least 16 bytes; without TLS the
+                  service must never be exposed directly to the Internet.
+    --model-dir   Model directory (default: .model-cache/<revision>)
+    --dim         Default embedding dimension (default: 768)
+    --vision-tokens  Default visual token budget for image requests
+    --token       Bearer token required on every request when set
+    --max-connections  Maximum concurrent connections (default: 32)
+    --request-timeout-ms  Read/write timeout per connection (default: 10000)
+    --max-body-bytes  Maximum request body size (default: 33554432)
+    --queue-capacity  Maximum queued or running ingestion jobs (default: 64)
+    --job-workers     Number of ingestion worker threads (default: 1)
+
+    The server prints one JSON listening record, then serves until
+    POST /v1/shutdown from a loopback connection. Ingestion is asynchronous:
+    POST /v1/documents returns a job id, and GET /v1/jobs/<id> reports status.
+
 OPTIONS:
     -V, --version    Equivalent to version
     -h, --help       Equivalent to help
@@ -153,8 +184,7 @@ EXIT CODES:
     1    execution error
     2    usage error
 
-The serve command will be added with milestone M6. No command is simulated
-in the meantime.
+The serve command starts the milestone M6 HTTP API. No command is simulated.
 "#
 );
 
@@ -175,6 +205,8 @@ pub enum Command {
     Verify(VerifyArgs),
     /// Materializes a snapshot and compacts the journal.
     Compact(CompactArgs),
+    /// Starts the local HTTP API and ingestion workers.
+    Serve(ServeArgs),
 }
 
 /// Arguments of the embed command.
@@ -277,6 +309,33 @@ pub struct CompactArgs {
     pub data_dir: PathBuf,
 }
 
+/// Arguments of the serve command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServeArgs {
+    /// Listen address.
+    pub bind: SocketAddr,
+    /// Data directory holding the journal and snapshots.
+    pub data_dir: PathBuf,
+    /// Model directory.
+    pub model_dir: PathBuf,
+    /// Default embedding dimension.
+    pub dimension: usize,
+    /// Default visual token budget.
+    pub vision_budget: usize,
+    /// Optional bearer token.
+    pub access_token: Option<String>,
+    /// Maximum concurrent connections.
+    pub max_connections: usize,
+    /// Per-connection read/write timeout in milliseconds.
+    pub request_timeout_ms: u64,
+    /// Maximum request body size in bytes.
+    pub max_body_bytes: usize,
+    /// Maximum queued or running jobs.
+    pub queue_capacity: usize,
+    /// Number of job workers.
+    pub job_workers: usize,
+}
+
 /// Default model directory for the frozen revision.
 pub fn default_model_dir() -> PathBuf {
     Path::new(MODEL_CACHE_DIR).join(MODEL_REVISION)
@@ -324,6 +383,7 @@ where
         "search" => parse_search(rest),
         "verify" => parse_verify(rest),
         "compact" => parse_compact(rest),
+        "serve" => parse_serve(rest),
         other => Err(Error::usage(format!("unknown command {other}; use --help"))),
     }
 }
@@ -364,6 +424,16 @@ fn parse_vision_budget(value: &str) -> Result<usize> {
 fn parse_positive_usize(value: &str, name: &str) -> Result<usize> {
     let parsed = value
         .parse::<usize>()
+        .map_err(|_| Error::usage(format!("invalid {name} {value}")))?;
+    if parsed == 0 {
+        return Err(Error::usage(format!("{name} must be positive")));
+    }
+    Ok(parsed)
+}
+
+fn parse_positive_u64(value: &str, name: &str) -> Result<u64> {
+    let parsed = value
+        .parse::<u64>()
         .map_err(|_| Error::usage(format!("invalid {name} {value}")))?;
     if parsed == 0 {
         return Err(Error::usage(format!("{name} must be positive")));
@@ -765,6 +835,121 @@ fn parse_compact(args: Vec<String>) -> Result<Command> {
     Ok(Command::Compact(CompactArgs { data_dir }))
 }
 
+fn parse_serve(args: Vec<String>) -> Result<Command> {
+    let mut bind = DEFAULT_BIND
+        .parse::<SocketAddr>()
+        .expect("the documented default bind address is valid");
+    let mut data_dir = None;
+    let mut model_dir = default_model_dir();
+    let mut dimension = 768usize;
+    let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
+    let mut access_token = None;
+    let mut max_connections = DEFAULT_MAX_CONNECTIONS;
+    let mut request_timeout_ms = DEFAULT_REQUEST_TIMEOUT_MS;
+    let mut max_body_bytes = DEFAULT_MAX_BODY_BYTES;
+    let mut queue_capacity = DEFAULT_QUEUE_CAPACITY;
+    let mut job_workers = DEFAULT_JOB_WORKERS;
+    let mut index = 0;
+
+    while index < args.len() {
+        let argument = args[index].as_str();
+        match argument {
+            "--bind" => {
+                let value = next_value(&args, &mut index, "--bind")?;
+                bind = value.parse::<SocketAddr>().map_err(|_| {
+                    Error::usage(format!("invalid bind address {value}; use IP:PORT"))
+                })?;
+            }
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "--model-dir" => {
+                let value = next_value(&args, &mut index, "--model-dir")?;
+                model_dir = PathBuf::from(value);
+            }
+            "--dim" => {
+                let value = next_value(&args, &mut index, "--dim")?;
+                dimension = parse_dimension(value)?;
+            }
+            "--vision-tokens" => {
+                let value = next_value(&args, &mut index, "--vision-tokens")?;
+                vision_budget = parse_vision_budget(value)?;
+            }
+            "--token" => {
+                let value = next_value(&args, &mut index, "--token")?;
+                if access_token.is_some() {
+                    return Err(Error::usage("--token was provided more than once"));
+                }
+                if value.is_empty() {
+                    return Err(Error::usage("--token must not be empty"));
+                }
+                access_token = Some(value.to_owned());
+            }
+            "--max-connections" => {
+                let value = next_value(&args, &mut index, "--max-connections")?;
+                max_connections = parse_positive_usize(value, "max-connections")?;
+            }
+            "--request-timeout-ms" => {
+                let value = next_value(&args, &mut index, "--request-timeout-ms")?;
+                request_timeout_ms = parse_positive_u64(value, "request-timeout-ms")?;
+            }
+            "--max-body-bytes" => {
+                let value = next_value(&args, &mut index, "--max-body-bytes")?;
+                max_body_bytes = parse_positive_usize(value, "max-body-bytes")?;
+            }
+            "--queue-capacity" => {
+                let value = next_value(&args, &mut index, "--queue-capacity")?;
+                queue_capacity = parse_positive_usize(value, "queue-capacity")?;
+            }
+            "--job-workers" => {
+                let value = next_value(&args, &mut index, "--job-workers")?;
+                job_workers = parse_positive_usize(value, "job-workers")?;
+            }
+            "-h" | "--help" => return Ok(Command::Help),
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => {
+                return Err(Error::usage(format!(
+                    "unexpected argument {other}; serve accepts options only"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    let data_dir = data_dir.ok_or_else(|| Error::usage("serve requires --data-dir <DIR>"))?;
+    let config = ServerConfig {
+        bind,
+        data_dir: data_dir.clone(),
+        model_dir: model_dir.clone(),
+        dimension,
+        vision_budget,
+        access_token: access_token.clone(),
+        max_connections,
+        request_timeout: Duration::from_millis(request_timeout_ms),
+        max_body_bytes,
+        queue_capacity,
+        job_workers,
+    };
+    config.validate()?;
+
+    Ok(Command::Serve(ServeArgs {
+        bind,
+        data_dir,
+        model_dir,
+        dimension,
+        vision_budget,
+        access_token,
+        max_connections,
+        request_timeout_ms,
+        max_body_bytes,
+        queue_capacity,
+        job_workers,
+    }))
+}
+
 /// Executes a command and writes its output to stdout.
 ///
 /// # Errors
@@ -780,6 +965,7 @@ pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
         Command::Search(args) => run_search(args, stdout)?,
         Command::Verify(args) => run_verify(args, stdout)?,
         Command::Compact(args) => run_compact(args, stdout)?,
+        Command::Serve(args) => run_serve(args, stdout)?,
     }
     stdout.flush()?;
     Ok(())
@@ -1131,6 +1317,48 @@ fn run_compact<W: Write>(args: CompactArgs, stdout: &mut W) -> Result<()> {
         Value::String(args.data_dir.display().to_string()),
     );
     write_json(stdout, &Value::Object(object))
+}
+
+fn run_serve<W: Write>(args: ServeArgs, stdout: &mut W) -> Result<()> {
+    let config = ServerConfig {
+        bind: args.bind,
+        data_dir: args.data_dir.clone(),
+        model_dir: args.model_dir.clone(),
+        dimension: args.dimension,
+        vision_budget: args.vision_budget,
+        access_token: args.access_token,
+        max_connections: args.max_connections,
+        request_timeout: Duration::from_millis(args.request_timeout_ms),
+        max_body_bytes: args.max_body_bytes,
+        queue_capacity: args.queue_capacity,
+        job_workers: args.job_workers,
+    };
+    let server = Server::bind(config)?;
+    let address = server.local_addr();
+    let mut listening = Object::new();
+    listening.insert("status".to_owned(), Value::String("listening".to_owned()));
+    listening.insert("address".to_owned(), Value::String(address.to_string()));
+    listening.insert(
+        "data_dir".to_owned(),
+        Value::String(args.data_dir.display().to_string()),
+    );
+    listening.insert(
+        "model_dir".to_owned(),
+        Value::String(args.model_dir.display().to_string()),
+    );
+    listening.insert(
+        "dimension".to_owned(),
+        Value::Number(Number::Unsigned(args.dimension as u64)),
+    );
+    write_json(stdout, &Value::Object(listening))?;
+    stdout.flush()?;
+
+    server.run()?;
+
+    let mut stopped = Object::new();
+    stopped.insert("status".to_owned(), Value::String("stopped".to_owned()));
+    stopped.insert("address".to_owned(), Value::String(address.to_string()));
+    write_json(stdout, &Value::Object(stopped))
 }
 
 fn validate_dimension(requested: usize, model_dimension: usize) -> Result<()> {
@@ -1546,6 +1774,13 @@ mod tests {
         }
     }
 
+    fn parse_serve_args(args: &[&str]) -> ServeArgs {
+        match parse_args(args).expect("serve arguments must parse") {
+            Command::Serve(args) => args,
+            other => panic!("expected serve, got {other:?}"),
+        }
+    }
+
     fn parse_search_args(args: &[&str]) -> SearchArgs {
         match parse_args(args).expect("search arguments must parse") {
             Command::Search(args) => args,
@@ -1583,9 +1818,62 @@ mod tests {
 
     #[test]
     fn rejects_unknown_command() {
-        let error = parse_args(&["serve"]).expect_err("serve does not exist yet");
+        let error = parse_args(&["nope"]).expect_err("unknown command must fail");
         assert!(matches!(error, Error::Usage(_)));
         assert!(error.to_string().contains("unknown command"));
+    }
+
+    #[test]
+    fn parses_serve_defaults() {
+        let args = parse_serve_args(&["serve", "--data-dir", "data"]);
+        assert_eq!(args.bind, "127.0.0.1:8080".parse().expect("address"));
+        assert_eq!(args.data_dir, PathBuf::from("data"));
+        assert_eq!(args.dimension, 768);
+        assert_eq!(args.max_connections, DEFAULT_MAX_CONNECTIONS);
+        assert_eq!(args.request_timeout_ms, DEFAULT_REQUEST_TIMEOUT_MS);
+        assert_eq!(args.max_body_bytes, DEFAULT_MAX_BODY_BYTES);
+        assert_eq!(args.queue_capacity, DEFAULT_QUEUE_CAPACITY);
+        assert_eq!(args.job_workers, DEFAULT_JOB_WORKERS);
+        assert!(args.access_token.is_none());
+    }
+
+    #[test]
+    fn parses_serve_options() {
+        let args = parse_serve_args(&[
+            "serve",
+            "--data-dir",
+            "data",
+            "--bind",
+            "0.0.0.0:9000",
+            "--token",
+            "0123456789abcdef",
+            "--max-connections",
+            "8",
+            "--request-timeout-ms",
+            "2000",
+            "--max-body-bytes",
+            "4096",
+            "--queue-capacity",
+            "4",
+            "--job-workers",
+            "2",
+        ]);
+        assert_eq!(args.bind, "0.0.0.0:9000".parse().expect("address"));
+        assert_eq!(args.access_token.as_deref(), Some("0123456789abcdef"));
+        assert_eq!(args.max_connections, 8);
+        assert_eq!(args.request_timeout_ms, 2000);
+        assert_eq!(args.max_body_bytes, 4096);
+        assert_eq!(args.queue_capacity, 4);
+        assert_eq!(args.job_workers, 2);
+    }
+
+    #[test]
+    fn serve_requires_data_dir_and_lan_token() {
+        let error = parse_args(&["serve"]).expect_err("missing data dir");
+        assert!(error.to_string().contains("--data-dir"));
+        let error = parse_args(&["serve", "--data-dir", "data", "--bind", "0.0.0.0:8080"])
+            .expect_err("lan without token");
+        assert!(error.to_string().contains("token"));
     }
 
     #[test]

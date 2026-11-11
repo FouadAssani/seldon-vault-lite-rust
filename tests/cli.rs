@@ -80,9 +80,7 @@ fn missing_command_is_a_usage_error() {
 
 #[test]
 fn unknown_command_is_a_usage_error() {
-    // `serve` is planned but not yet implemented: the CLI must
-    // explicitly refuse instead of simulating a service.
-    let output = run(&["serve"]);
+    let output = run(&["nope"]);
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     assert!(stderr(&output).contains("unknown command"));
@@ -445,4 +443,87 @@ fn audio_documents_can_be_indexed_and_found_by_text_or_audio() {
         top.get("source").and_then(|value| value.as_str()),
         Some("fixtures/media/audio/music_chords_2s.wav")
     );
+}
+
+#[test]
+fn serve_command_starts_serves_and_stops() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpStream;
+    use std::process::Stdio;
+
+    let unique = format!(
+        "seldon-cli-serve-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(unique);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+
+    let mut child = Command::new(BIN)
+        .args([
+            "serve",
+            "--data-dir",
+            dir.to_str().expect("UTF-8 temp dir"),
+            "--model-dir",
+            "fixtures/model/tiny_text",
+            "--bind",
+            "127.0.0.1:0",
+            "--dim",
+            "8",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("serve must start");
+    let stdout = child.stdout.take().expect("stdout pipe");
+    let mut reader = BufReader::new(stdout);
+    let mut listening = String::new();
+    reader
+        .read_line(&mut listening)
+        .expect("read the listening record");
+    let listening =
+        seldon_vault_lite::json::parse(listening.trim()).expect("listening record must be JSON");
+    let address = listening
+        .get("address")
+        .and_then(|value| value.as_str())
+        .expect("listening record has an address");
+    assert_eq!(
+        listening.get("status").and_then(|value| value.as_str()),
+        Some("listening")
+    );
+
+    let mut stream = TcpStream::connect(address).expect("connect to serve");
+    stream
+        .write_all(
+            b"POST /v1/shutdown HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        )
+        .expect("write shutdown request");
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .expect("read shutdown response");
+    let response = String::from_utf8(response).expect("UTF-8 response");
+    assert!(
+        response.starts_with("HTTP/1.1 202"),
+        "unexpected shutdown response: {response}"
+    );
+
+    let status = child.wait().expect("wait for serve to stop");
+    assert!(status.success());
+    let mut stopped = String::new();
+    reader
+        .read_line(&mut stopped)
+        .expect("read the stopped record");
+    let stopped =
+        seldon_vault_lite::json::parse(stopped.trim()).expect("stopped record must be JSON");
+    assert_eq!(
+        stopped.get("status").and_then(|value| value.as_str()),
+        Some("stopped")
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
