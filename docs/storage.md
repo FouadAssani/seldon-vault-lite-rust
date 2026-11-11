@@ -1,7 +1,8 @@
 # Persistent storage and hybrid search
 
-This document is the operational reference for milestone M3. ADR 0005 is the
-decision record; this file describes the on-disk layout, recovery algorithm,
+This document is the operational reference for milestone M3. ADR 0005 covers
+the journal and hybrid search; ADR 0006 covers snapshots, compaction, and
+read-only views. This file describes the on-disk layout, recovery algorithm,
 limits, index behavior, and CLI usage.
 
 ## Status
@@ -12,14 +13,18 @@ Implemented on branch feat/m3-persistent-storage:
 - atomic commit and fsync before in-memory apply;
 - deterministic replay, torn-tail truncation, and corruption detection;
 - exclusive writer lock using std::fs::File::try_lock;
+- versioned snapshots with a bounded header and transaction records;
+- safe compaction with crash recovery at every snapshot and journal write step;
+- lock-free read-only views that see committed writer state and ignore torn
+  journal tails;
 - BM25 lexical index, exact cosine vector search, and RRF hybrid fusion;
-- CLI index, search, and verify commands;
-- crash-injection and corruption tests at every byte of a journal record.
+- CLI index, search, verify, and compact commands;
+- crash-injection and corruption tests at every byte of a journal record, a
+  snapshot temporary file, a snapshot file, and a compaction journal temporary
+  file.
 
 Not claimed yet:
 
-- snapshots and compaction;
-- concurrent read-only store opening;
 - HNSW or any approximate vector index;
 - HTTP API, jobs, and ingestion queue;
 - image and audio storage.
@@ -30,11 +35,16 @@ A data directory contains:
 
     <data-dir>/
       journal.log      append-only transaction journal
+      snapshot.sv      materialized state after compaction
+      snapshot.tmp     temporary snapshot during atomic creation
+      journal.tmp      temporary empty journal during compaction
       writer.lock      exclusive writer lock file
+      compaction.lock  shared/exclusive lock serializing compaction and readers
 
-The lock file is intentionally left in place. Lock ownership is held by the
-open file description, not by file contents. The journal is the source of
-truth; the in-memory document and chunk maps are rebuilt by replay.
+The lock files are intentionally left in place. Lock ownership is held by the
+open file description, not by file contents. The snapshot and journal are the
+source of truth; the in-memory document and chunk maps are rebuilt by replay.
+Temporary files are ignored by open.
 
 The data directory is user data and is never embedded in the binary. A store
 must not share a directory with unrelated files.
@@ -59,6 +69,34 @@ All integers are little-endian.
 
 The footer is written last. A record is committed only when the header,
 payload, footer, and sequence all validate.
+
+## Snapshot layout
+
+A snapshot is a fixed header followed by transaction records in the same
+framing as the journal. All integers are little-endian.
+
+    offset  size  field
+    0       4     magic "SVS1"
+    4       2     format version (1)
+    6       2     reserved (0)
+    8       8     base sequence (last journal sequence covered)
+    16      8     next chunk id
+    24      4     embedding dimension (0 means no chunks)
+    28      8     document count
+    36      8     chunk count
+    44      8     record count (one record per document)
+    52      4     header CRC-32 over bytes 0..52
+    56      N     transaction records numbered 1..record_count
+
+Snapshot records materialize the current state: one PutDocument operation
+followed by that document's PutChunk operations in ordinal order. Chunk ids and
+next_chunk_id are preserved exactly; restore does not renumber them. The base
+sequence is the global journal sequence before compaction and may be greater
+than record_count because deleted documents and other transactions are covered
+by the snapshot but not materialized.
+
+A snapshot must be complete. Truncation or trailing bytes are corruption
+because the file is renamed into place only after it is fully synchronized.
 
 ## Transaction payload
 
@@ -106,12 +144,20 @@ Appending a transaction:
 Opening a store:
 
 1. create the directory if needed and sync it;
-2. acquire the exclusive writer lock;
-3. read journal.log with a 256 MiB cap;
-4. scan records in sequence order;
-5. decode and apply each committed transaction to a temporary state;
-6. truncate only the uncommitted tail;
+2. acquire the exclusive writer lock and ensure compaction.lock exists;
+3. read snapshot.sv with a 512 MiB cap, validate the header and records, and
+   restore the materialized documents and chunks;
+4. read journal.log with a 256 MiB cap;
+5. scan the journal from base + 1 when it was compacted, or from sequence one
+   when an old journal remains after a crash; skip records at or below the
+   snapshot base and apply the rest;
+6. truncate only the uncommitted journal tail;
 7. open the append writer at the new valid end.
+
+A missing snapshot is treated as an empty base. A snapshot with an invalid
+header, truncation, trailing bytes, count mismatch, invalid record, duplicate
+chunk id, missing document, duplicate ordinal, or dimension mismatch is
+corruption and stops the open.
 
 Recovery classifications:
 
@@ -133,18 +179,57 @@ ambiguous case: a torn footer and bit rot in the final footer are
 indistinguishable without a second storage medium. The recovery report exposes
 the number of discarded trailing bytes; verify reports it without truncating.
 
+## Compaction
+
+Compaction runs under the writer lock and takes compaction.lock exclusively. It
+writes the complete snapshot to snapshot.tmp, synchronizes it, renames it to
+snapshot.sv, synchronizes the directory, creates and synchronizes an empty
+journal.tmp, renames it over journal.log, synchronizes the directory, reopens
+the empty journal, and sets next_sequence to base + 1.
+
+Crash windows:
+
+| Crash point | Recovered state |
+|---|---|
+| before snapshot rename | old snapshot and journal; partial snapshot.tmp ignored |
+| after snapshot rename, before journal rename | new snapshot and old journal; records at or below the base are skipped |
+| after journal rename, before reopen | new snapshot and empty journal |
+| journal rename failure | new snapshot and old journal; compaction can be retried |
+| journal reopen failure | writer is poisoned until reopened |
+
+The snapshot is built in memory and capped at 512 MiB. Disk usage temporarily
+doubles because the snapshot duplicates chunks and vectors.
+
+## Read-only views
+
+ReadOnlyStore opens an existing data directory without taking writer.lock. It
+takes compaction.lock shared for the duration of the load, replays the snapshot
+and the committed journal prefix into an immutable in-memory state, and does not
+modify snapshot.sv or journal.log. A concurrent append can leave a torn journal
+tail; the view reports the discarded bytes and does not apply them.
+
+Store::verify uses the same read-only loading path and reports snapshot records,
+journal records applied after the snapshot, documents, chunks, and truncated
+bytes without modifying the data directory.
+
 ## Store API
 
 The public store surface is:
 
-- Store::open(data_dir): lock, replay, recover, and open for append;
+- Store::open(data_dir): lock, replay snapshot and journal, recover, and open
+  for append;
 - Store::put_document(document, chunks): one atomic transaction;
 - Store::delete_document(id): cascade chunks, return false when absent;
+- Store::compact(): materialize a snapshot and replace the journal;
+- Store::open_read_only(data_dir): lock-free ReadOnlyStore view;
 - Store::documents and Store::chunks: deterministic iterators;
 - Store::document_chunks(id): chunk ids in ordinal order;
-- Store::recovery: replayed record count and truncated bytes;
+- Store::recovery: snapshot records, journal records, and truncated bytes;
 - Store::embedding_dimension: the single dimension shared by all chunks;
 - Store::verify(data_dir): read-only integrity report.
+
+ReadOnlyStore exposes the same read accessors without mutation methods. It is a
+point-in-time view: later writer appends are not visible until it is reopened.
 
 A store rejects duplicate document ids, non-text modalities, empty chunk
 lists, dimension changes, oversized payloads, and exhausted count caps before
@@ -165,6 +250,8 @@ writing. A failed validation leaves the journal and in-memory state unchanged.
 | Transaction operations | 8,192 |
 | Transaction payload | 16 MiB |
 | Journal file read | 256 MiB |
+| Snapshot file read or written | 512 MiB |
+| Snapshot header | 56 bytes |
 | Documents in a store | 1,000,000 |
 | Chunks in a store | 10,000,000 |
 
@@ -229,9 +316,13 @@ Lexical search does not load the model:
 
     cargo run -- search --data-dir ./data --mode lexical "ownership"
 
-Verify without modifying the journal:
+Verify without modifying the snapshot or journal:
 
     cargo run -- verify --data-dir ./data
+
+Compact the store into a snapshot and an empty journal:
+
+    cargo run -- compact --data-dir ./data
 
 Output is compact deterministic JSON on stdout. Errors go to stderr with exit
 code 1 for execution or corruption failures and 2 for usage errors.
@@ -247,7 +338,15 @@ The storage tests include:
   corruption, sequence gaps, unknown versions, and unknown record types;
 - store reopen, delete cascade, writer lock contention, duplicate documents,
   dimension mismatch, payload caps, and crash injection at every write byte;
-- read-only verify with a torn tail and unchanged journal bytes;
+- snapshot header validation, atomic replacement, and truncation rejection;
+- compaction preserving document ids, chunk ids, next_chunk_id, embedding
+  dimension, and global sequence numbers;
+- truncated snapshot.tmp and journal.tmp at every byte being ignored;
+- old journal records below the snapshot base being skipped, followed by new
+  records above the base;
+- read-only views while a writer is open, including torn-tail reporting without
+  modifying the journal;
+- verify reporting snapshot and journal records separately;
 - index ranking, filters, pagination, determinism, and token caps.
 
 Run the full gate with scripts/verify.sh or the commands in README.md.

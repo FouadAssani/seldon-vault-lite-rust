@@ -4,8 +4,9 @@
 
 This document describes the repository organization at milestone M3 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, ADR 0004, or ADR 0005, which are authoritative for
-foundational, format, model, text-embedding, and storage/index decisions.
+ADR 0002, ADR 0003, ADR 0004, ADR 0005, or ADR 0006, which are authoritative
+for foundational, format, model, text-embedding, storage/index, and
+snapshot/compaction decisions.
 
 ## Current state
 
@@ -19,7 +20,7 @@ The repository contains:
     ├── main.rs             # translates the CLI result into an exit code
     ├── lib.rs              # version, target, frozen revision constants
     ├── error.rs            # central error type
-    ├── cli/mod.rs          # version, help, embed, index, search, verify
+    ├── cli/mod.rs          # version, help, embed, index, search, verify, compact
     ├── binary/
     │   ├── mod.rs
     │   ├── reader.rs       # bounded byte reader and file cap
@@ -40,7 +41,8 @@ The repository contains:
     │   ├── codec.rs        # bounded little-endian encoder/decoder
     │   ├── model.rs        # documents, chunks, metadata, transactions
     │   ├── journal.rs      # framed records, append, scan, recovery
-    │   └── store.rs        # lock, replay, put/delete, verify
+    │   ├── snapshot.rs     # versioned header and atomic snapshot creation
+    │   └── store.rs        # lock, replay, put/delete, compact, read-only, verify
     ├── index/
     │   ├── mod.rs          # filters, requests, hits, hybrid index
     │   ├── tokenize.rs     # deterministic Unicode tokenizer
@@ -64,6 +66,7 @@ The repository contains:
     ├── adr/0003-model-freeze-and-tokenizer.md
     ├── adr/0004-text-embeddings.md
     ├── adr/0005-persistent-storage-and-hybrid-search.md
+    ├── adr/0006-snapshots-compaction-and-read-only-views.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -123,7 +126,8 @@ Rules:
 | embed | loads the text model and prints one JSON vector | stdout | 0 |
 | index | ingests a strict JSONL document file into the store | stdout | 0 |
 | search | runs hybrid, lexical, or vector search | stdout | 0 |
-| verify | validates the committed journal prefix read-only | stdout | 0 |
+| verify | validates the snapshot and journal prefix read-only | stdout | 0 |
+| compact | materializes a snapshot and replaces the journal | stdout | 0 |
 | --version, -V | alias of version | stdout | 0 |
 | --help, -h | alias of help | stdout | 0 |
 | no command | usage error | stderr | 2 |
@@ -160,9 +164,13 @@ embed the query with the SearchQuery prompt. The output is a JSON array with
 chunk id, document id, ordinal, score, lexical and vector ranks, title,
 source, modality, text, and metadata.
 
-verify requires --data-dir and prints records, documents, chunks, and
-truncated_bytes. It does not acquire the writer lock and does not modify the
-journal.
+verify requires --data-dir and prints records, snapshot_records, documents,
+chunks, and truncated_bytes. It does not acquire the writer lock and does not
+modify the snapshot or journal.
+
+compact requires --data-dir and prints snapshot_records, snapshot_bytes,
+documents, chunks, and data_dir. It opens the writer store, materializes the
+current state into snapshot.sv, and replaces journal.log with an empty file.
 
 serve remains explicitly refused until M6. No stub returns a fake result.
 
@@ -214,20 +222,31 @@ accepted.
 
 ### Storage and journal
 
-The storage format is documented in docs/storage.md and decided in ADR 0005.
-The journal is an append-only sequence of records with magic, format version,
-record type, sequence, payload length, header CRC, payload CRC, payload, and a
-footer. The footer is written last; a record is committed only when all fields
-validate. A torn tail is truncated; committed corruption is reported.
+The storage format is documented in docs/storage.md and decided in ADR 0005
+and ADR 0006. The journal is an append-only sequence of records with magic,
+format version, record type, sequence, payload length, header CRC, payload CRC,
+payload, and a footer. The footer is written last; a record is committed only
+when all fields validate. A torn tail is truncated; committed corruption is
+reported.
 
 Transactions are bounded and atomic. The store applies them in memory only
 after the record is synchronized. Replay validates schema version, sequence,
 chunk-id order, document references, duplicate ordinals, embedding dimension,
 and normalized embeddings before accepting a transaction.
 
-The store holds an exclusive std file lock. Writer locking is serialized at
-M3; verify reads without the lock and without truncation. Snapshots and
-compaction are deferred, so the journal is replayed in full.
+A snapshot materializes the current documents and chunks in a versioned header
+and transaction records. It preserves chunk ids, next_chunk_id, embedding
+dimension, and a base journal sequence. Compaction writes snapshot.tmp,
+synchronizes and renames it to snapshot.sv, then replaces journal.log with an
+empty journal.tmp. A crash leaves the old generation, the new snapshot with the
+old journal, or the new snapshot with an empty journal; all recover. Journal
+records at or below the snapshot base are skipped.
+
+The store holds an exclusive std file lock for writers. Compaction additionally
+takes an exclusive compaction lock; read-only views take it shared while
+loading. ReadOnlyStore replays the snapshot and committed journal prefix without
+writer.lock and without modifying either file. A concurrent torn append is
+reported and not applied. verify uses the same read-only path.
 
 ### Index
 
@@ -367,8 +386,9 @@ a dependency or if minos is not 11.0.
 
 ## Next steps
 
-1. **M3 follow-up**: snapshots, safe compaction, crash injection at every
-   snapshot write step, and concurrent read-only opening.
+1. **M3**: journal, snapshots, safe compaction, read-only views, BM25, exact
+   vector search, and RRF are implemented. HNSW remains deferred until volume
+   and latency measurements justify it.
 2. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
 3. **M6**: HTTP API, bounded job queue, and hardening.
 4. **M7**: NEON and macOS packaging.

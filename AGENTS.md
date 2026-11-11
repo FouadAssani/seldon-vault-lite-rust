@@ -8,7 +8,7 @@
 
 A step is complete only if **its tests pass, its results are reproducible, and no regression is observed in the scope already validated**. A successful compilation is not proof. Never declare a modality "supported" if it only returns a vector computed from a file name or a textual marker.
 
-State at the time of writing (2026-11-11): milestone **M0** is complete; milestone **M1** is complete on `main` with the bounded reader, SHA-256, BF16 conversion, strict JSON, Safetensors reader, FP32 tensors, scalar kernels, frozen model manifest, exact BPE tokenizer, and official prompt prefixes, all tested. Milestone **M2** is complete on `main`: strict text configuration and weight loading, the full 24-layer EmbeddingGemma 2 text encoder, per-layer embeddings, bidirectional sliding/full grouped-query attention, layer-specific RoPE, pooling, the 512 to 768 projection, Matryoshka dimensions, the CLI `embed` command, and a tiny official model fixture plus full-model parity tests. Text embeddings are validated against official goldens. Milestone **M3** is started on branch `feat/m3-persistent-storage`: an append-only journal with framed CRC-32 records, atomic commit and fsync, deterministic replay, torn-tail recovery, corruption detection, an exclusive writer lock, a persistent document/chunk store, BM25 lexical search, exact cosine vector search, RRF hybrid fusion, the CLI `index`, `search`, and `verify` commands, and crash-injection tests at every journal byte. Snapshots, compaction, concurrent read-only opening, HNSW, the HTTP API, and image/audio are not implemented yet; no fake result is returned. The crate minimum is Rust 1.89 because storage uses std file locking.
+State at the time of writing (2026-11-11): milestone **M0** is complete; milestone **M1** is complete on `main` with the bounded reader, SHA-256, BF16 conversion, strict JSON, Safetensors reader, FP32 tensors, scalar kernels, frozen model manifest, exact BPE tokenizer, and official prompt prefixes, all tested. Milestone **M2** is complete on `main`: strict text configuration and weight loading, the full 24-layer EmbeddingGemma 2 text encoder, per-layer embeddings, bidirectional sliding/full grouped-query attention, layer-specific RoPE, pooling, the 512 to 768 projection, Matryoshka dimensions, the CLI `embed` command, and a tiny official model fixture plus full-model parity tests. Text embeddings are validated against official goldens. Milestone **M3** is implemented on branch `feat/m3-persistent-storage`: an append-only journal with framed CRC-32 records, atomic commit and fsync, deterministic replay, torn-tail recovery, corruption detection, an exclusive writer lock, a persistent document/chunk store, versioned snapshots, crash-safe compaction, lock-free read-only views, BM25 lexical search, exact cosine vector search, RRF hybrid fusion, and the CLI `index`, `search`, `verify`, and `compact` commands. Crash-injection tests cover every journal byte, every snapshot temporary-file byte, every compaction journal temporary-file byte, and truncated snapshot files. HNSW, the HTTP API, and image/audio are not implemented yet; no fake result is returned. The crate minimum is Rust 1.89 because storage uses std file locking.
 
 ## 1. Mission and scope
 
@@ -60,7 +60,7 @@ seldon-vault-lite/
 ├── src/
 │   ├── main.rs
 │   ├── api/                   # native HTTP/1.1 + JSON
-│   ├── cli/                   # serve, embed, index, search, verify, version
+│   ├── cli/                   # serve, embed, index, search, verify, compact, version
 │   ├── binary/                # Safetensors, headers, checksums
 │   ├── tensor/                # scalar and SIMD kernels
 │   ├── model/                 # tokenizer, EmbeddingGemma 2
@@ -169,7 +169,7 @@ vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
 - Routes: `GET /health`, `GET /ready`, `GET /v1/models`, `POST /v1/embeddings`, `POST /v1/documents`, `DELETE /v1/documents/{id}`, `POST /v1/search`, `GET /v1/jobs/{id}`.
 - Bounded ingestion queue, concurrency limiting, cancellations, graceful shutdown, local observability.
 - Default binding to `127.0.0.1`. For LAN: explicit configuration, access token, strict limits. Without external TLS, **do not expose directly to the Internet**.
-- Native CLI: `serve`, `embed`, `index`, `search`, `verify`, `version`. No auxiliary process.
+- Native CLI: `serve`, `embed`, `index`, `search`, `verify`, `compact`, `version`. No auxiliary process.
 
 ## 10. Tests and definition of "done"
 

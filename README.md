@@ -3,16 +3,17 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M3 started — persistent storage and hybrid text search.**
-M0, M1, and M2 are complete: the std-only foundations, strict binary formats,
-FP32 tensor core, frozen model manifest, exact BPE tokenizer, official prompts,
-and the full EmbeddingGemma 2 text encoder with Matryoshka dimensions. M3 adds
-an append-only journal with CRC-32-framed atomic transactions, deterministic
-replay and crash recovery, an exclusive writer lock, a persistent document and
-chunk store, a BM25 inverted index, exact cosine vector search, RRF hybrid
-fusion, and the CLI index, search, and verify commands. Snapshots, compaction,
-and concurrent readers are the next storage increment; image and audio are not
-implemented and are not declared supported.
+**Status: milestone M3 — persistent storage, snapshots, compaction, and hybrid
+text search.** M0, M1, and M2 are complete: the std-only foundations, strict
+binary formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer,
+official prompts, and the full EmbeddingGemma 2 text encoder with Matryoshka
+dimensions. M3 adds an append-only journal with CRC-32-framed atomic
+transactions, deterministic replay and crash recovery, versioned snapshots,
+safe compaction, lock-free read-only views, an exclusive writer lock, a
+persistent document and chunk store, a BM25 inverted index, exact cosine vector
+search, RRF hybrid fusion, and the CLI index, search, verify, and compact
+commands. HNSW remains deferred until measurements justify it; image and audio
+are not implemented and are not declared supported.
 
 ## Requirements
 
@@ -44,6 +45,7 @@ Index a JSONL file and search it:
     cargo run --release -- index --data-dir ./data documents.jsonl
     cargo run --release -- search --data-dir ./data --mode hybrid "ownership in Rust"
     cargo run -- verify --data-dir ./data
+    cargo run -- compact --data-dir ./data
 
 For reproducible tests without the full tokenizer, index and vector search
 accept a diagnostic --ids path against the tiny official model:
@@ -72,14 +74,14 @@ the tiny official fixture still runs.
 | EmbeddingGemma 2 text encoder and Matryoshka dimensions | implemented |
 | Append-only journal with framed CRC-32 records | implemented |
 | Atomic commit, fsync, deterministic replay, crash recovery | implemented |
-| Exclusive writer lock and read-only verify | implemented |
+| Versioned snapshots and safe compaction | implemented |
+| Crash recovery at every snapshot and compaction write step | implemented |
+| Exclusive writer lock and lock-free read-only views | implemented |
 | Persistent documents, chunks, metadata, and normalized vectors | implemented |
 | BM25 lexical index with filters | implemented |
 | Exact cosine vector search (correctness oracle) | implemented |
 | Hybrid RRF fusion and pagination | implemented |
-| CLI embed, index, search, verify, version, help | implemented |
-| Snapshots and safe compaction | pending |
-| Concurrent read-only store opening | pending |
+| CLI embed, index, search, verify, compact, version, help | implemented |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
 | Image and audio embeddings | pending (M4/M5) |
@@ -93,6 +95,7 @@ the tiny official fixture still runs.
 - [ADR 0003 — Model freeze and tokenizer](docs/adr/0003-model-freeze-and-tokenizer.md)
 - [ADR 0004 — Text embeddings](docs/adr/0004-text-embeddings.md)
 - [ADR 0005 — Persistent storage and hybrid search](docs/adr/0005-persistent-storage-and-hybrid-search.md)
+- [ADR 0006 — Snapshots, compaction, and read-only views](docs/adr/0006-snapshots-compaction-and-read-only-views.md)
 - [Architecture (M3 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
@@ -137,7 +140,8 @@ Or simply:
 - **Robustness**: no panic on hostile input, explicit memory bounds, checked
   arithmetic, deterministic FP32 scalar path.
 - **Storage**: append-only journal, checksummed framed records, fsync at commit,
-  deterministic replay, exclusive writer lock.
+  deterministic replay, versioned snapshots, crash-safe compaction, exclusive
+  writer lock, and lock-free read-only views.
 - **CLI**: data on stdout, errors on stderr; exit codes 0 (success), 1
   (execution), 2 (usage).
 

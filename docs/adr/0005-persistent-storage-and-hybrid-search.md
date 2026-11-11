@@ -5,7 +5,7 @@
 - **Milestone**: M3
 - **Decision maker**: project maintainer
 - **Supersedes**: none
-- **Superseded by**: none
+- **Superseded by**: ADR 0006 for snapshots, compaction, and read-only views
 
 ## Context
 
@@ -214,18 +214,18 @@ same TextModel::embed_ids path as the existing embed command.
 
 ### D10 — Deferred work
 
-The following M3-plan items are deliberately not claimed yet:
+At the time ADR 0005 was accepted, the following M3-plan items were deferred:
 
-- snapshots and safe compaction: the journal is currently replayed in full;
+- snapshots and safe compaction: the journal was replayed in full;
 - concurrent read-only store opening and API readers;
 - HNSW: exact search remains the only vector index until measurements justify
   an approximate one;
 - HTTP API, jobs, and ingestion queue: milestone M6;
 - image and audio: milestones M4 and M5.
 
-Snapshots and compaction are the next storage increment. Their crash-injection
-tests must cover every snapshot and compaction write step before the format is
-declared stable.
+Snapshots, safe compaction, and read-only views are now implemented and decided
+in ADR 0006, including crash injection at every snapshot and compaction write
+step. HNSW, the HTTP API, and image/audio remain deferred.
 
 ### D11 — Verification
 

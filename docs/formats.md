@@ -177,10 +177,13 @@ The fixture is not a model parity fixture. It proves format handling only.
 
 Milestone M3 adds an append-only journal with framed records, CRC-32 header and
 payload checksums, a written-last footer, monotonic sequence numbers, atomic
-transactions, fsync at commit, and deterministic replay. The complete layout,
-transaction payload schema, recovery rules, and limits are documented in
-[docs/storage.md](storage.md) and decided in
-[ADR 0005](adr/0005-persistent-storage-and-hybrid-search.md).
+transactions, fsync at commit, and deterministic replay. It also adds versioned
+snapshots with a bounded header, transaction records, a base sequence, and
+preserved chunk ids, plus crash-safe compaction and lock-free read-only views.
+The complete layouts, transaction payload schema, recovery rules, compaction
+windows, and limits are documented in [docs/storage.md](storage.md) and decided
+in [ADR 0005](adr/0005-persistent-storage-and-hybrid-search.md) and
+[ADR 0006](adr/0006-snapshots-compaction-and-read-only-views.md).
 
 The journal is treated as hostile input. A torn tail is truncated; committed
 corruption, sequence gaps, unknown versions, invalid transaction semantics, and
