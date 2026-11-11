@@ -5,7 +5,7 @@ tests. Model weights and multi-gigabyte files are never committed.
 
 ## State at milestone M2
 
-Seven fixtures are present:
+Eight fixture files are present:
 
 - `formats/mini.safetensors`: a 281-byte deterministic Safetensors file with
   F32, BF16, and zero-sized tensors. It proves format handling only; it is not
