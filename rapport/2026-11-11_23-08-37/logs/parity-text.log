@@ -1,0 +1,8 @@
+    Finished `release` profile [optimized] target(s) in 0.04s
+     Running tests/text_embeddings.rs (target/aarch64-apple-darwin/release/deps/text_embeddings-6813a165f3c75e5b)
+
+running 1 test
+test real_model_parity_when_the_model_cache_is_present ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 12.87s
+

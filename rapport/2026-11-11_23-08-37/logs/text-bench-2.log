@@ -1,0 +1,28 @@
+    Finished `release` profile [optimized] target(s) in 0.04s
+     Running tests/text_bench.rs (target/aarch64-apple-darwin/release/deps/text_bench-f8bac8ec1118e7c2)
+
+running 1 test
+sequential: p50 154.7695ms, p95 154.946625ms, min 154.139208ms, max 154.946625ms
+concurrent: 20 requests on 4 threads in 814.827167ms (24.55 requests/s)
+test text_embedding_latency_and_throughput ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.91s
+
+       10.05 real        11.58 user         0.56 sys
+          2572419072  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              175222  page reclaims
+                 904  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   1  signals received
+                 110  voluntary context switches
+                3882  involuntary context switches
+           343358454  instructions retired
+           136776446  cycles elapsed
+             5882312  peak memory footprint

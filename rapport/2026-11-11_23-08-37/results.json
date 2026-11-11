@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "run": {
+    "id": "2026-11-11_23-08-37",
+    "started_local": "2026-11-11T23:08:37+01:00",
+    "started_utc": "2026-11-11T22:08:37Z",
+    "finished_local": "2026-11-11T23:35:16+01:00",
+    "timezone": "Europe/Paris",
+    "git_commit": "45da9c794b805bec2c32bb988dacdfda25817bb1",
+    "git_short": "45da9c7",
+    "git_branch": "main",
+    "git_status": "clean except the new rapport/ directory"
+  },
+  "environment": {
+    "cpu": "Apple M2 Pro",
+    "cores": 10,
+    "performance_cores": 6,
+    "efficiency_cores": 4,
+    "memory_bytes": 17179869184,
+    "os": "macOS 26.5.1 (25F80)",
+    "kernel": "Darwin 25.5.0",
+    "arch": "arm64",
+    "target": "aarch64-apple-darwin",
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "cargo": "1.99.1 (5f94df478 2026-08-27)",
+    "release_profile": "opt-level=3, thin LTO, codegen-units=1",
+    "test_profile": "opt-level=2"
+  },
+  "model": {
+    "id": "google/embeddinggemma-2",
+    "revision": "f9972ac22e696a105c482202646979e33e4b5a1e",
+    "safetensors_bytes": 1488915288,
+    "bundle_bytes": 1525784026
+  },
+  "artifact": {
+    "path": "target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite",
+    "sha256": "b2e697b78602d8eaf82fc170b8d92056ff0088a38bcb77bbfd6f648cf52902e8",
+    "bytes": 1539215600,
+    "linked_libraries": [
+      "/usr/lib/libSystem.B.dylib"
+    ],
+    "minos": "11.0",
+    "signature": "adhoc",
+    "gatekeeper": "rejected",
+    "cargo_graph": "root crate only"
+  },
+  "tests": {
+    "command": "SELDON_SKIP_MODEL_PARITY=1 cargo test",
+    "note": "The environment variable makes the real-model parity tests return early in the fast suite. Full parity was replayed separately in release mode.",
+    "wall_s": 15.14,
+    "user_s": 1.4,
+    "sys_s": 4.27,
+    "max_rss_bytes": 260734976,
+    "peak_footprint_bytes": 6357472,
+    "passed": 438,
+    "failed": 0,
+    "ignored": 15,
+    "total": 453,
+    "sum_suite_seconds": 11.52,
+    "suites": [
+      {
+        "label": "src/lib.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-e2cfbd712b866f97",
+        "result": "ok",
+        "passed": 374,
+        "failed": 0,
+        "ignored": 1,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 9.12
+      },
+      {
+        "label": "src/main.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-942fcddd3589fc2e",
+        "result": "ok",
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/audio.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/audio-2cbe8526307f51e5",
+        "result": "ok",
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.06
+      },
+      {
+        "label": "tests/audio_embeddings.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/audio_embeddings-ff1414d20a7f9e96",
+        "result": "ok",
+        "passed": 2,
+        "failed": 0,
+        "ignored": 2,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/audio_tiny.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/audio_tiny-f050f89301e17f13",
+        "result": "ok",
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.01
+      },
+      {
+        "label": "tests/bundle_loading.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/bundle_loading-93db20e1226c9fb8",
+        "result": "ok",
+        "passed": 5,
+        "failed": 0,
+        "ignored": 4,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/cli.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/cli-25f8c37191181d44",
+        "result": "ok",
+        "passed": 12,
+        "failed": 0,
+        "ignored": 3,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.37
+      },
+      {
+        "label": "tests/formats.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/formats-c3afe6891bf013c7",
+        "result": "ok",
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/http_api.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/http_api-dc92334032efa53b",
+        "result": "ok",
+        "passed": 11,
+        "failed": 0,
+        "ignored": 2,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 1.07
+      },
+      {
+        "label": "tests/image_embeddings.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/image_embeddings-6aa8cce8675bcb06",
+        "result": "ok",
+        "passed": 2,
+        "failed": 0,
+        "ignored": 2,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/media.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/media-f7f68c035c341167",
+        "result": "ok",
+        "passed": 7,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/preprocess.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/preprocess-139040e796dc5448",
+        "result": "ok",
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.16
+      },
+      {
+        "label": "tests/release_e2e.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/release_e2e-0f4adc8a048607db",
+        "result": "ok",
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.09
+      },
+      {
+        "label": "tests/text_bench.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/text_bench-76ab774d1d655451",
+        "result": "ok",
+        "passed": 0,
+        "failed": 0,
+        "ignored": 1,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/text_embeddings.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/text_embeddings-84e66ea60685ce9a",
+        "result": "ok",
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.0
+      },
+      {
+        "label": "tests/tokenizer.rs",
+        "binary": "target/aarch64-apple-darwin/debug/deps/tokenizer-1cec1fb2b8ce5476",
+        "result": "ok",
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0,
+        "seconds": 0.64
+      }
+    ]
+  },
+  "text_bench": {
+    "command": "cargo test --release --test text_bench -- --ignored --nocapture",
+    "sample_count": 3,
+    "samples": [
+      {
+        "sample": 1,
+        "p50_ms": 164.522208,
+        "p95_ms": 173.227042,
+        "min_ms": 159.457,
+        "max_ms": 173.227042,
+        "concurrent_requests": 20,
+        "threads": 4,
+        "concurrent_wall_s": 1.000594167,
+        "throughput_rps": 19.99,
+        "test_seconds": 10.61,
+        "wall_s": 13.93,
+        "user_s": 19.16,
+        "sys_s": 1.12,
+        "max_rss_bytes": 2778988544,
+        "peak_footprint_bytes": 6046176
+      },
+      {
+        "sample": 2,
+        "p50_ms": 154.7695,
+        "p95_ms": 154.946625,
+        "min_ms": 154.139208,
+        "max_ms": 154.946625,
+        "concurrent_requests": 20,
+        "threads": 4,
+        "concurrent_wall_s": 0.814827167,
+        "throughput_rps": 24.55,
+        "test_seconds": 9.91,
+        "wall_s": 10.05,
+        "user_s": 11.58,
+        "sys_s": 0.56,
+        "max_rss_bytes": 2572419072,
+        "peak_footprint_bytes": 5882312
+      },
+      {
+        "sample": 3,
+        "p50_ms": 154.341584,
+        "p95_ms": 182.427459,
+        "min_ms": 153.829041,
+        "max_ms": 182.427459,
+        "concurrent_requests": 20,
+        "threads": 4,
+        "concurrent_wall_s": 0.811873667,
+        "throughput_rps": 24.63,
+        "test_seconds": 9.57,
+        "wall_s": 9.6,
+        "user_s": 11.6,
+        "sys_s": 0.36,
+        "max_rss_bytes": 2802991104,
+        "peak_footprint_bytes": 5865928
+      }
+    ],
+    "p50_ms": 154.7695,
+    "p95_ms": 173.227042,
+    "min_ms": 153.829041,
+    "max_ms": 182.427459,
+    "concurrent_requests": 20,
+    "threads": 4,
+    "concurrent_wall_s": 0.814827167,
+    "throughput_rps": 24.55,
+    "test_seconds": 9.91,
+    "wall_s": 10.05,
+    "user_s": 11.6,
+    "sys_s": 0.56,
+    "max_rss_bytes": 2778988544,
+    "peak_footprint_bytes": 5882312,
+    "note": "Median of three release-mode samples. Sample 1 ran immediately after the fast suite and was an outlier (164.5 ms p50, 19.99 req/s); samples 2-3 are stable at 154.3-154.8 ms p50 and 24.55-24.63 req/s."
+  },
+  "embeds": {
+    "text": {
+      "label": "Text",
+      "input": "What causes the northern lights?",
+      "prompt": "SearchQuery",
+      "dimension": 768,
+      "wall_s": 7.61,
+      "user_s": 7.1,
+      "sys_s": 0.4,
+      "max_rss_bytes": 2810183680,
+      "peak_footprint_bytes": 1281968456,
+      "cold_wall_s": 11.84
+    },
+    "image70": {
+      "label": "Image (70 visual tokens)",
+      "input": "fixtures/media/quadrants_16x16.png",
+      "vision_tokens": 70,
+      "dimension": 768,
+      "wall_s": 16.5,
+      "user_s": 15.75,
+      "sys_s": 0.56,
+      "max_rss_bytes": 3578216448,
+      "peak_footprint_bytes": 1999948824,
+      "cold_wall_s": 16.54
+    },
+    "audio": {
+      "label": "Audio (100 ms tone)",
+      "input": "fixtures/media/audio/short_tone_100ms.wav",
+      "dimension": 768,
+      "wall_s": 8.64,
+      "user_s": 7.94,
+      "sys_s": 0.57,
+      "max_rss_bytes": 4034117632,
+      "peak_footprint_bytes": 2507951272,
+      "cold_wall_s": 8.61
+    }
+  },
+  "parity": {
+    "text": {
+      "label": "Text parity",
+      "command": "cargo test --release --test text_embeddings real_model_parity -- --nocapture",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 5,
+      "test_seconds": 12.87,
+      "wall_s": 13.01,
+      "user_s": 12.13,
+      "sys_s": 0.54,
+      "max_rss_bytes": 2835169280,
+      "peak_footprint_bytes": 5882312
+    },
+    "image": {
+      "label": "Image parity (70 visual tokens)",
+      "command": "cargo test --release --test image_embeddings image_embedding_matches_the_official_reference -- --nocapture",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 3,
+      "test_seconds": 21.87,
+      "wall_s": 21.92,
+      "user_s": 21.36,
+      "sys_s": 0.52,
+      "max_rss_bytes": 3578314752,
+      "peak_footprint_bytes": 5849544
+    },
+    "audio": {
+      "label": "Audio parity (short tone)",
+      "command": "cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 3,
+      "test_seconds": 15.13,
+      "wall_s": 15.18,
+      "user_s": 13.82,
+      "sys_s": 0.82,
+      "max_rss_bytes": 4029399040,
+      "peak_footprint_bytes": 5898720
+    }
+  },
+  "release_e2e": {
+    "command": "scripts/release_e2e.sh --binary target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite --report <absolute path>",
+    "wall_s": 208.64,
+    "user_s": 171.49,
+    "sys_s": 9.11,
+    "max_rss_bytes": 4857331712,
+    "peak_footprint_bytes": 4178256,
+    "status": "passed",
+    "timestamp": "2026-11-11T22:19:04Z",
+    "platform": "arm64",
+    "os": "26.5.1",
+    "binary": "/Users/fouadassani/projets/seldon-vault-lite-rust/target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite",
+    "binary_sha256": "b2e697b78602d8eaf82fc170b8d92056ff0088a38bcb77bbfd6f648cf52902e8",
+    "binary_bytes": 1539215600,
+    "version": "seldon-vault-lite 0.1.0 (aarch64-apple-darwin)",
+    "signing": "adhoc",
+    "gatekeeper": "rejected",
+    "network_isolation": "disabled",
+    "dimension": 768,
+    "documents": 3,
+    "fixtures": "/Users/fouadassani/projets/seldon-vault-lite-rust/fixtures/media",
+    "staging": "/var/folders/h8/zv0c_0b978ldk6rmrpln9mkw0000gn/T//seldon-release-e2e.FXybaI/install",
+    "phases": [
+      {
+        "phase": "Artifact checks",
+        "status": "passed"
+      },
+      {
+        "phase": "Embedded model probe",
+        "status": "passed"
+      },
+      {
+        "phase": "Text embedding",
+        "status": "passed"
+      },
+      {
+        "phase": "Image embedding",
+        "status": "passed"
+      },
+      {
+        "phase": "Audio embedding",
+        "status": "passed"
+      },
+      {
+        "phase": "Index text, image, and audio",
+        "status": "passed"
+      },
+      {
+        "phase": "Lexical, vector, and hybrid search",
+        "status": "passed"
+      },
+      {
+        "phase": "Verify and compact",
+        "status": "passed"
+      },
+      {
+        "phase": "Restart after compaction",
+        "status": "passed"
+      },
+      {
+        "phase": "HTTP API lifecycle",
+        "status": "passed"
+      },
+      {
+        "phase": "HTTP restart persistence",
+        "status": "passed"
+      },
+      {
+        "phase": "Report and PASSED",
+        "status": "passed"
+      }
+    ],
+    "attempts": 2,
+    "attempt_note": "Attempt 1 completed all lifecycle checks but exited 1 at the final report copy because the report path was relative and the harness had changed into its staging directory. Attempt 2 used an absolute report path and passed."
+  },
+  "historical": {
+    "m2_text_p50_ms": 1485,
+    "m2_text_p95_ms": 1504,
+    "m2_throughput_rps": 2.43,
+    "m7_text_p50_ms": 159,
+    "m7_text_p95_ms": 159,
+    "m7_throughput_rps": 24.47,
+    "m7_text_parity_s": 12.98,
+    "m7_image_parity_s": 22.02,
+    "m7_audio_parity_s": 15.03,
+    "m8_binary_sha256": "b2e697b78602d8eaf82fc170b8d92056ff0088a38bcb77bbfd6f648cf52902e8",
+    "m8_binary_bytes": 1539215600,
+    "m8_report_timestamp": "2026-11-11T21:49:09Z"
+  },
+  "derived": {
+    "tests_pass_rate_pct": 100.0,
+    "text_speedup_vs_m2": 9.594913726541728,
+    "text_p50_delta_vs_m7_pct": -2.660691823899375,
+    "text_p95_delta_vs_m7_pct": 8.94782515723271,
+    "throughput_ratio_vs_m2": 10.102880658436213,
+    "throughput_ratio_vs_m7": 1.0032693093583982,
+    "image_delta_vs_m7_pct": -25.068119891008173,
+    "audio_delta_vs_m7_pct": -42.514970059880234,
+    "binary_size_gib": 1.4335062354803085,
+    "binary_size_gb": 1.5392156
+  }
+}

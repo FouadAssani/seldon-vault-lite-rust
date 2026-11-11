@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seldon Vault Lite — E2E benchmark — 2026-11-11_23-08-37</title>
+<style>
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --ink: #172033;
+  --muted: #5b6478;
+  --line: #e3e7ef;
+  --accent: #4f46e5;
+  --accent-2: #0f766e;
+  --accent-3: #7c3aed;
+  --ok: #15803d;
+  --ok-bg: #dcfce7;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --bad: #b91c1c;
+  --bad-bg: #fee2e2;
+  --shadow: 0 14px 40px rgba(23, 32, 51, 0.09);
+  --radius: 18px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 30px 20px 70px; }
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #111827 0%, #312e81 46%, #0f766e 100%);
+  color: #fff;
+  border-radius: 26px;
+  padding: 38px 38px 34px;
+  box-shadow: var(--shadow);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 70%);
+  pointer-events: none;
+}
+.eyebrow { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #c7d2fe; font-weight: 700; }
+.hero h1 { margin: 8px 0 10px; font-size: clamp(28px, 4.2vw, 46px); line-height: 1.1; letter-spacing: -0.02em; }
+.hero p { margin: 0; max-width: 760px; color: #e0e7ff; font-size: 16px; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; align-items: center; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px;
+  font-size: 13px; font-weight: 700;
+  background: rgba(255,255,255,0.12); color: #fff;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,0.2); }
+.pill.run { background: rgba(255,255,255,0.08); font-weight: 600; color: #e0e7ff; }
+.grid { display: grid; gap: 16px; margin-top: 22px; }
+.cards { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 18px 16px;
+  box-shadow: 0 6px 18px rgba(23,32,51,0.05);
+}
+.card-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.card-value { margin-top: 6px; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+.card-sub { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.card-delta { margin-top: 10px; font-size: 12px; font-weight: 700; display: inline-block; padding: 4px 8px; border-radius: 8px; }
+.card-delta.good { color: var(--ok); background: var(--ok-bg); }
+.card-delta.warn { color: var(--warn); background: var(--warn-bg); }
+.card-delta.bad { color: var(--bad); background: var(--bad-bg); }
+.card-delta.neutral { color: var(--muted); background: #eef1f7; }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 26px 28px;
+  box-shadow: 0 6px 18px rgba(23,32,51,0.04);
+  margin-top: 20px;
+}
+.panel h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+.panel h3 { margin: 24px 0 10px; font-size: 16px; }
+.panel .lead { margin: 0 0 18px; color: var(--muted); }
+.two-col { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px; align-items: start; }
+.perf { grid-template-columns: 0.9fr 1.1fr; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: #f8fafc; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) { background: #fbfcfe; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; }
+.badge.ok { color: var(--ok); background: var(--ok-bg); }
+.badge.warn { color: var(--warn); background: var(--warn-bg); }
+.badge.bad { color: var(--bad); background: var(--bad-bg); }
+.badge.neutral { color: var(--muted); background: #eef1f7; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12.5px; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.kv-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fbfcfe; }
+.kv-item .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+.kv-item .v { margin-top: 3px; font-weight: 700; word-break: break-word; }
+.chart { margin-top: 14px; }
+.chart-title { font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 10px; }
+.chart-unit { color: var(--muted); font-weight: 600; }
+.bars { display: grid; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: 150px 1fr 92px; gap: 10px; align-items: center; }
+.bar-label { font-size: 12.5px; color: var(--muted); }
+.bar-track { height: 10px; background: #eef1f7; border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-3)); }
+.bar-fill.m2 { background: linear-gradient(90deg, #94a3b8, #64748b); }
+.bar-fill.m7 { background: linear-gradient(90deg, #0f766e, #14b8a6); }
+.bar-fill.current { background: linear-gradient(90deg, #4f46e5, #7c3aed); }
+.bar-fill.text { background: linear-gradient(90deg, #4f46e5, #6366f1); }
+.bar-fill.image { background: linear-gradient(90deg, #0f766e, #14b8a6); }
+.bar-fill.audio { background: linear-gradient(90deg, #b45309, #f59e0b); }
+.bar-fill.rss { background: linear-gradient(90deg, #be123c, #f43f5e); }
+.bar-value { text-align: right; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ring-wrap { display: flex; gap: 20px; align-items: center; }
+.ring {
+  width: 132px; height: 132px; border-radius: 50%;
+  display: grid; place-items: center; flex: 0 0 auto;
+  background: conic-gradient(var(--ok) 0 96.69%, var(--warn) 96.69% 100%);
+}
+.ring-inner { width: 98px; height: 98px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; text-align: center; }
+.ring-inner strong { display: block; font-size: 26px; line-height: 1; }
+.ring-inner span { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.legend { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.legend .item { display: flex; align-items: center; gap: 8px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; }
+.legend .ok { background: var(--ok); }
+.legend .warn { background: var(--warn); }
+.legend .neutral { background: #cbd5e1; }
+.timeline { position: relative; margin: 8px 0 0; padding-left: 26px; }
+.timeline::before { content: ""; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: linear-gradient(#15803d, #14b8a6); border-radius: 2px; }
+.timeline-item { position: relative; padding: 6px 0 6px 10px; }
+.timeline-item::before { content: "✓"; position: absolute; left: -24px; top: 5px; width: 18px; height: 18px; border-radius: 50%; background: var(--ok); color: #fff; font-size: 11px; font-weight: 900; display: grid; place-items: center; }
+.timeline-item .phase { font-weight: 700; font-size: 14px; }
+.timeline-item .status { color: var(--muted); font-size: 12px; }
+pre { margin: 10px 0 0; padding: 16px 18px; background: #0f172a; color: #e2e8f0; border-radius: 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+.note { border-left: 4px solid var(--accent); background: #eef2ff; padding: 12px 16px; border-radius: 0 12px 12px 0; color: #3730a3; font-size: 13.5px; }
+.note.warn { border-color: var(--warn); background: var(--warn-bg); color: #92400e; }
+.small { font-size: 12.5px; color: var(--muted); }
+.footer { margin-top: 26px; text-align: center; color: var(--muted); font-size: 12.5px; }
+@media (max-width: 860px) {
+  .two-col, .perf { grid-template-columns: 1fr; }
+  .hero { padding: 28px 24px; }
+  .panel { padding: 22px 18px; }
+  .bar-row { grid-template-columns: 110px 1fr 78px; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 18px 12px 50px; }
+  .hero h1 { font-size: 28px; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .bar-row { grid-template-columns: 1fr; gap: 4px; }
+  .bar-value { text-align: left; }
+  .ring-wrap { flex-direction: column; align-items: flex-start; }
+}
+@media print {
+  body { background: #fff; }
+  .hero { box-shadow: none; }
+  .panel, .card { box-shadow: none; break-inside: avoid; }
+  .wrap { max-width: none; padding: 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">Seldon Vault Lite · E2E benchmark</div>
+    <h1>End-to-end validation &amp; performance snapshot</h1>
+    <p>Full test suite, embedded release E2E harness, text latency/throughput,
+       multimodal embed timings, memory, and frozen-model parity on the reference
+       Apple M2 Pro. Use this report as the baseline for the next improvement.</p>
+    <div class="hero-meta">
+      <span class="pill"><span class="dot"></span> PASSED</span>
+      <span class="pill run">Run 2026-11-11_23-08-37</span>
+      <span class="pill run">2026-11-11 23:08:37 +01:00</span>
+      <span class="pill run">commit 45da9c7</span>
+    </div>
+  </header>
+
+  <section class="grid cards">
+    
+      <div class="card">
+        <div class="card-label">Tests</div>
+        <div class="card-value">438 / 453</div>
+        <div class="card-sub">0 failed · 15 ignored</div>
+        <div class="card-delta good">100% pass rate</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Release E2E</div>
+        <div class="card-value">PASSED</div>
+        <div class="card-sub">208.64 s wall · 12/12 phases</div>
+        <div class="card-delta good">embedded artifact</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Text p50</div>
+        <div class="card-value">154.8 ms</div>
+        <div class="card-sub">p95 173.2 ms · median of 3</div>
+        <div class="card-delta good">-2.7% vs M7</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Throughput</div>
+        <div class="card-value">24.55 req/s</div>
+        <div class="card-sub">4 threads · 20 requests · median of 3</div>
+        <div class="card-delta good">10.10x vs M2</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Text speedup</div>
+        <div class="card-value">9.59x</div>
+        <div class="card-sub">vs M2 scalar 1,485 ms</div>
+        <div class="card-delta good">NEON path</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Artifact</div>
+        <div class="card-value">1.43 GiB</div>
+        <div class="card-sub">SHA-256 b2e697b78602…</div>
+        <div class="card-delta neutral">embedded model</div>
+      </div>
+  </section>
+
+  <section class="panel">
+    <h2>Run fingerprint</h2>
+    <p class="lead">Everything needed to reproduce and compare this run.</p>
+    <div class="kv">
+      <div class="kv-item"><div class="k">Run ID</div><div class="v mono">2026-11-11_23-08-37</div></div><div class="kv-item"><div class="k">Started</div><div class="v">2026-11-11 23:08:37 +01:00</div></div><div class="kv-item"><div class="k">Finished</div><div class="v">2026-11-11 23:35:16 +01:00</div></div><div class="kv-item"><div class="k">Git commit</div><div class="v mono">45da9c7 · main</div></div><div class="kv-item"><div class="k">Model</div><div class="v mono">google/embeddinggemma-2 @ f9972ac22e69…</div></div><div class="kv-item"><div class="k">Target</div><div class="v mono">aarch64-apple-darwin</div></div><div class="kv-item"><div class="k">Rust</div><div class="v">1.99.1 (58cf8f9c3 2026-10-13)</div></div><div class="kv-item"><div class="k">Cargo graph</div><div class="v">root crate only · zero third-party crates</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Environment &amp; artifact</h2>
+    <div class="two-col">
+      <div>
+        <h3>Machine</h3>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><th>CPU</th><td>Apple M2 Pro, 10 cores (6P + 4E)</td></tr><tr><th>Memory</th><td>16 GiB</td></tr><tr><th>OS</th><td>macOS 26.5.1 (25F80) · Darwin 25.5.0</td></tr><tr><th>Architecture</th><td>arm64</td></tr><tr><th>Release profile</th><td>opt-level=3, thin LTO, codegen-units=1</td></tr><tr><th>Test profile</th><td>opt-level=2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Embedded release artifact</h3>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><th>Size</th><td>1,539,215,600 B · 1.43 GiB</td></tr><tr><th>SHA-256</th><td class="mono">b2e697b78602d8eaf82fc170…</td></tr><tr><th>Linked libs</th><td class="mono">/usr/lib/libSystem.B.dylib</td></tr><tr><th>Deployment</th><td class="mono">minos 11.0</td></tr><tr><th>Signature</th><td>adhoc (linker-signed)</td></tr><tr><th>Gatekeeper</th><td>rejected — expected for ad-hoc local use</td></tr><tr><th>Model source</th><td>embedded <code>.svlm</code> bundle</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Test suite</h2>
+    <p class="lead"><code>SELDON_SKIP_MODEL_PARITY=1 cargo test</code> · 438 passed, 0 failed, 15 ignored in 15.14 s wall.</p>
+    <div class="two-col">
+      <div class="ring-wrap">
+        <div class="ring">
+          <div class="ring-inner">
+            <div><strong>438</strong><span>passed</span></div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="item"><span class="swatch ok"></span> 438 passed</div>
+          <div class="item"><span class="swatch warn"></span> 15 ignored</div>
+          <div class="item"><span class="swatch neutral"></span> 453 total · 0 failed</div>
+        </div>
+      </div>
+      <div class="note">
+        <strong>Parity note.</strong> The fast suite sets
+        <code>SELDON_SKIP_MODEL_PARITY=1</code>, so the real-model parity tests
+        return early here. They were replayed separately in release mode and all
+        passed (see the parity table below).
+      </div>
+    </div>
+    <h3>Suite breakdown</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Suite</th><th class="num">Passed</th><th class="num">Failed</th><th>Ignored</th><th class="num">Duration</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          
+        <tr>
+          <td>Unit tests (lib)</td>
+          <td class="num">374</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">1 ignored</span></td>
+          <td class="num">9.12 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Audio decoder</td>
+          <td class="num">4</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.06 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Audio embeddings</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">2 ignored</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Tiny audio fixture</td>
+          <td class="num">3</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.01 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Bundle loading</td>
+          <td class="num">5</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">4 ignored</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>CLI integration</td>
+          <td class="num">12</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">3 ignored</span></td>
+          <td class="num">0.37 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Formats / JSON / tensors</td>
+          <td class="num">4</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>HTTP API</td>
+          <td class="num">11</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">2 ignored</span></td>
+          <td class="num">1.07 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Image embeddings</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">2 ignored</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Media decoders</td>
+          <td class="num">7</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Image preprocessing</td>
+          <td class="num">4</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.16 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Release E2E lifecycle</td>
+          <td class="num">1</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.09 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Text benchmark</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td><span class="badge warn">1 ignored</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Text embeddings</td>
+          <td class="num">6</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.00 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Tokenizer</td>
+          <td class="num">3</td>
+          <td class="num">0</td>
+          <td><span class="badge neutral">0</span></td>
+          <td class="num">0.64 s</td>
+          <td><span class="badge ok">PASS</span></td>
+        </tr>
+          
+          <tr><th>Total</th><th class="num">438</th><th class="num">0</th><th>15</th><th class="num">11.52 s</th><th><span class="badge ok">PASS</span></th></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Release E2E harness</h2>
+    <p class="lead">Full embedded-model lifecycle in a sanitized environment:
+       text, image, and audio embeddings; ingestion; lexical, vector, and hybrid
+       search; verify; compact; restart; and the loopback HTTP API.</p>
+    <div class="kv" style="margin-bottom:16px">
+      <div class="kv-item"><div class="k">Status</div><div class="v"><span class="badge ok">PASSED</span></div></div>
+      <div class="kv-item"><div class="k">Wall time</div><div class="v">208.64 s</div></div>
+      <div class="kv-item"><div class="k">Max RSS</div><div class="v">4.52 GiB</div></div>
+      <div class="kv-item"><div class="k">Documents after restart</div><div class="v">3</div></div>
+      <div class="kv-item"><div class="k">Network isolation</div><div class="v">disabled · sandbox-exec unavailable</div></div>
+      <div class="kv-item"><div class="k">Report timestamp</div><div class="v mono">2026-11-11T22:19:04Z</div></div>
+    </div>
+    <div class="two-col">
+      <div>
+        <h3>Lifecycle phases</h3>
+        <div class="timeline">
+        <div class="timeline-item">
+          <div class="phase">Artifact checks</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Embedded model probe</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Text embedding</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Image embedding</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Audio embedding</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Index text, image, and audio</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Lexical, vector, and hybrid search</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Verify and compact</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Restart after compaction</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">HTTP API lifecycle</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">HTTP restart persistence</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div>
+        <div class="timeline-item">
+          <div class="phase">Report and PASSED</div>
+          <div class="status"><span class="badge ok">PASS</span> completed</div>
+        </div></div>
+      </div>
+      <div>
+        <h3>Artifact checks</h3>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><th>Linked libraries</th><td class="mono">/usr/lib/libSystem.B.dylib only</td></tr><tr><th>Deployment target</th><td class="mono">minos 11.0</td></tr><tr><th>Signature</th><td>adhoc</td></tr><tr><th>Gatekeeper</th><td>rejected (expected)</td></tr><tr><th>Cargo graph</th><td>root crate only</td></tr><tr><th>Version</th><td class="mono">seldon-vault-lite 0.1.0 (aarch64-apple-darwin)</td></tr><tr><th>Dimension</th><td>768</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn" style="margin-top:14px">
+          <strong>Network isolation was disabled</strong> in this environment
+          because <code>sandbox-exec</code> was unavailable. Do not claim an
+          isolated offline run from this report.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Performance</h2>
+    <p class="lead">Release profile on the reference Apple M2 Pro. Text benchmark
+       uses <code>std::time::Instant</code>; standalone embeds use
+       <code>/usr/bin/time -l</code> around the embedded binary.</p>
+    <div class="two-col perf">
+      <div>
+        <h3>Text latency &amp; throughput</h3>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><th>p50</th><td class="num">154.8 ms</td></tr><tr><th>p95</th><td class="num">173.2 ms</td></tr><tr><th>min / max</th><td class="num">153.8 ms / 182.4 ms</td></tr><tr><th>Concurrent</th><td class="num">20 on 4 threads · 0.8148 s</td></tr><tr><th>Throughput</th><td class="num"><strong>24.55 req/s</strong></td></tr><tr><th>Process wall</th><td class="num">10.05 s (median; sample 1 includes 2.93 s compile)</td></tr><tr><th>Max RSS</th><td class="num">2.59 GiB</td></tr>
+            </tbody>
+          </table>
+        </div>
+        
+      <div class="chart">
+        <div class="chart-title">Text p50 speedup vs M2 scalar <span class="chart-unit">higher is better</span></div>
+        <div class="bars">
+        <div class="bar-row">
+          <div class="bar-label">M2 scalar</div>
+          <div class="bar-track"><div class="bar-fill m2" style="width:10.4%"></div></div>
+          <div class="bar-value">1.00x</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">M7 NEON</div>
+          <div class="bar-track"><div class="bar-fill m7" style="width:97.3%"></div></div>
+          <div class="bar-value">9.34x</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Current run</div>
+          <div class="bar-track"><div class="bar-fill current" style="width:100.0%"></div></div>
+          <div class="bar-value">9.59x</div>
+        </div></div>
+      </div>
+      </div>
+      <div>
+        <h3>Standalone embedded embeds</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Modality</th><th>Input</th><th class="num">Warm</th><th class="num">Cold</th><th class="num">Max RSS</th></tr></thead>
+            <tbody>
+        <tr>
+          <td>Text</td>
+          <td class="mono">What causes the northern lights?</td>
+          <td class="num">7.61 s</td>
+          <td class="num">11.84 s</td>
+          <td class="num">2.62 GiB</td>
+        </tr>
+        <tr>
+          <td>Image (70 visual tokens)</td>
+          <td class="mono">fixtures/media/quadrants_16x16.png</td>
+          <td class="num">16.50 s</td>
+          <td class="num">16.54 s</td>
+          <td class="num">3.33 GiB</td>
+        </tr>
+        <tr>
+          <td>Audio (100 ms tone)</td>
+          <td class="mono">fixtures/media/audio/short_tone_100ms.wav</td>
+          <td class="num">8.64 s</td>
+          <td class="num">8.61 s</td>
+          <td class="num">3.76 GiB</td>
+        </tr></tbody>
+          </table>
+        </div>
+        
+      <div class="chart">
+        <div class="chart-title">Warm standalone embed wall time <span class="chart-unit">lower is better</span></div>
+        <div class="bars">
+        <div class="bar-row">
+          <div class="bar-label">Text</div>
+          <div class="bar-track"><div class="bar-fill text" style="width:46.1%"></div></div>
+          <div class="bar-value">7.61 s</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Image (70 tok)</div>
+          <div class="bar-track"><div class="bar-fill image" style="width:100.0%"></div></div>
+          <div class="bar-value">16.50 s</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Audio (100 ms)</div>
+          <div class="bar-track"><div class="bar-fill audio" style="width:52.4%"></div></div>
+          <div class="bar-value">8.64 s</div>
+        </div></div>
+      </div>
+        
+      <div class="chart">
+        <div class="chart-title">Peak RSS <span class="chart-unit">lower is better</span></div>
+        <div class="bars">
+        <div class="bar-row">
+          <div class="bar-label">Text embed</div>
+          <div class="bar-track"><div class="bar-fill text" style="width:57.9%"></div></div>
+          <div class="bar-value">2.62 GiB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Image embed</div>
+          <div class="bar-track"><div class="bar-fill image" style="width:73.7%"></div></div>
+          <div class="bar-value">3.33 GiB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Audio embed</div>
+          <div class="bar-track"><div class="bar-fill audio" style="width:83.1%"></div></div>
+          <div class="bar-value">3.76 GiB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">E2E harness</div>
+          <div class="bar-track"><div class="bar-fill rss" style="width:100.0%"></div></div>
+          <div class="bar-value">4.52 GiB</div>
+        </div></div>
+      </div>
+      </div>
+    </div>
+    <h3>Text benchmark samples</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Sample</th><th class="num">p50</th><th class="num">p95</th><th class="num">min</th><th class="num">max</th><th class="num">Throughput</th><th class="num">Process wall</th><th class="num">Max RSS</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>1</td>
+          <td class="num">164.5 ms</td>
+          <td class="num">173.2 ms</td>
+          <td class="num">159.5 ms</td>
+          <td class="num">173.2 ms</td>
+          <td class="num">19.99 req/s</td>
+          <td class="num">13.93 s</td>
+          <td class="num">2.59 GiB</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td class="num">154.8 ms</td>
+          <td class="num">154.9 ms</td>
+          <td class="num">154.1 ms</td>
+          <td class="num">154.9 ms</td>
+          <td class="num">24.55 req/s</td>
+          <td class="num">10.05 s</td>
+          <td class="num">2.40 GiB</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td class="num">154.3 ms</td>
+          <td class="num">182.4 ms</td>
+          <td class="num">153.8 ms</td>
+          <td class="num">182.4 ms</td>
+          <td class="num">24.63 req/s</td>
+          <td class="num">9.60 s</td>
+          <td class="num">2.61 GiB</td>
+        </tr>
+        <tr><th>Median</th><th class="num">154.8 ms</th><th class="num">173.2 ms</th><th class="num">153.8 ms</th><th class="num">182.4 ms</th><th class="num">24.55 req/s</th><th class="num">10.05 s</th><th class="num">2.59 GiB</th></tr></tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:10px">Median of 3 release-mode samples. Sample 1 ran immediately after the fast suite and was an outlier (164.5 ms p50, 19.99 req/s); samples 2-3 are stable at ~154.5 ms p50 and ~24.6 req/s. Sample 1 process wall includes 2.93 s of compilation; samples 2-3 are warm builds.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Frozen-model parity replay</h2>
+    <p class="lead">Release-mode golden comparisons against the official
+       <code>google/embeddinggemma-2</code> reference vectors.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test</th><th>Status</th><th class="num">Test time</th><th class="num">Process wall</th><th class="num">Max RSS</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>Text parity</td>
+          <td><span class="badge ok">PASS</span></td>
+          <td class="num">12.87 s</td>
+          <td class="num">13.01 s</td>
+          <td class="num">2.64 GiB</td>
+        </tr>
+        <tr>
+          <td>Image parity (70 visual tokens)</td>
+          <td><span class="badge ok">PASS</span></td>
+          <td class="num">21.87 s</td>
+          <td class="num">21.92 s</td>
+          <td class="num">3.33 GiB</td>
+        </tr>
+        <tr>
+          <td>Audio parity (short tone)</td>
+          <td><span class="badge ok">PASS</span></td>
+          <td class="num">15.13 s</td>
+          <td class="num">15.18 s</td>
+          <td class="num">3.75 GiB</td>
+        </tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Comparison with documented baselines</h2>
+    <p class="lead">M2, M7, and M8 values come from <code>docs/benchmarks.md</code>
+       and were not re-measured in this run. Current values are this run's
+       measurements.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Metric</th><th class="num">M2 scalar</th><th class="num">M7 NEON</th><th class="num">Current</th><th class="num">Δ vs M7</th></tr></thead>
+        <tbody><tr><td>Text p50</td><td class="num">1,485 ms</td><td class="num">159 ms</td><td class="num"><strong>154.8 ms</strong></td><td class="num">-2.7%</td></tr><tr><td>Text p95</td><td class="num">1,504 ms</td><td class="num">159 ms</td><td class="num">173.2 ms</td><td class="num">+8.9%</td></tr><tr><td>Throughput (4T/20)</td><td class="num">2.43 req/s</td><td class="num">24.47 req/s</td><td class="num">24.55 req/s</td><td class="num">+0.3%</td></tr><tr><td>Text parity</td><td class="num">—</td><td class="num">12.98 s</td><td class="num">12.87 s</td><td class="num">-0.8%</td></tr><tr><td>Image parity (70 tok)</td><td class="num">—</td><td class="num">22.02 s</td><td class="num">21.87 s</td><td class="num">-0.7%</td></tr><tr><td>Audio parity (short)</td><td class="num">—</td><td class="num">15.03 s</td><td class="num">15.13 s</td><td class="num">+0.7%</td></tr><tr><td>Binary size</td><td class="num">—</td><td class="num">—</td><td class="num">1.43 GiB</td><td class="num">= M8</td></tr><tr><td>Documents after restart</td><td class="num">—</td><td class="num">3</td><td class="num">3</td><td class="num">=</td></tr></tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px"><strong>Interpretation.</strong> Text p50 is -2.7% and throughput is +0.3% versus the documented M7 baseline. Median of three release-mode samples. Sample 1 ran immediately after the fast suite and was an outlier (164.5 ms p50, 19.99 req/s); samples 2-3 are stable at 154.3-154.8 ms p50 and 24.55-24.63 req/s. Treat this as the new baseline for the next improvement rather than a regression claim: run-to-run variance, thermal state, and background load were not controlled across historical runs. Text speedup versus the M2 scalar baseline is 9.59x.</div>
+    <p class="small" style="margin-top:12px">Parity wall times use the same release-mode commands as the M7 replay and are directly comparable. Standalone image/audio embed timings are a different measurement (they include embedded startup and no test assertions) and should not be substituted into the parity columns. The p95 sample is sensitive to a single outlier (sample 3: 182.4 ms; sample 2: 154.9 ms); use p50 and throughput as the stable baseline.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Notes &amp; caveats</h2>
+    <ul class="small" style="margin:0; padding-left:20px; display:grid; gap:8px">
+      <li><strong>Fast suite parity skip:</strong> <code>SELDON_SKIP_MODEL_PARITY=1</code> makes real-model parity tests return early; they were replayed separately and all pass.</li><li><strong>Network isolation:</strong> disabled because <code>sandbox-exec</code> was unavailable; do not claim an isolated offline run.</li><li><strong>Gatekeeper:</strong> the ad-hoc build is rejected by <code>spctl</code>; expected for the local-use artifact.</li><li><strong>Attempt 1:</strong> all lifecycle checks passed, but the harness exited 1 at the final report copy because the <code>--report</code> path was relative. Attempt 2 used an absolute path and passed; the attempt 1 log is retained as <code>logs/release-e2e-attempt1.log</code>.</li><li><strong>Memory:</strong> the harness max RSS is higher than individual embeddings because the HTTP server holds text, image, and audio weights in one process.</li><li><strong>Image/audio performance:</strong> the towers remain scalar correctness baselines; the 70-token image and 100 ms audio measurements are not optimized results.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Reproduce this run</h2>
+    <pre><code>cd /Users/fouadassani/projets/seldon-vault-lite-rust
+
+# Fast suite (includes the release E2E lifecycle test)
+SELDON_SKIP_MODEL_PARITY=1 cargo test
+
+# Release-mode text benchmark
+cargo test --release --test text_bench -- --ignored --nocapture
+
+# Standalone embedded embeddings
+BIN=target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite
+&quot;$BIN&quot; embed --text &quot;What causes the northern lights?&quot; --dim 768
+&quot;$BIN&quot; embed --image fixtures/media/quadrants_16x16.png --dim 768 --vision-tokens 70
+&quot;$BIN&quot; embed --audio fixtures/media/audio/short_tone_100ms.wav --dim 768
+
+# Full release E2E harness (absolute --report path required)
+scripts/release_e2e.sh \
+  --binary &quot;$BIN&quot; \
+  --report &quot;$PWD/rapport/2026-11-11_23-08-37/release-e2e-report.json&quot;
+
+# Frozen-model parity replay
+cargo test --release --test text_embeddings real_model_parity -- --nocapture
+cargo test --release --test image_embeddings image_embedding_matches_the_official_reference -- --nocapture
+cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture</code></pre>
+  </section>
+
+  <footer class="footer">
+    Generated from <code>results.json</code> · Run <code>2026-11-11_23-08-37</code> ·
+    commit <code>45da9c7</code> · Seldon Vault Lite 0.1.0
+  </footer>
+</div>
+</body>
+</html>

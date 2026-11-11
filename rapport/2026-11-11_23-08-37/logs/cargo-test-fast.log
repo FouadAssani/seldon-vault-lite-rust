@@ -1,0 +1,575 @@
+   Compiling seldon-vault-lite v0.1.0 (/Users/fouadassani/projets/seldon-vault-lite-rust)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.18s
+     Running unittests src/lib.rs (target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-e2cfbd712b866f97)
+
+running 375 tests
+test api::http::tests::decodes_percent_encoded_path_segments ... ok
+test api::http::tests::rejects_malformed_request_lines ... ok
+test api::server::tests::constant_time_comparison_matches_only_identical_tokens ... ok
+test api::base64::tests::enforces_the_decoded_cap ... ok
+test api::base64::tests::rejects_invalid_input ... ok
+test api::http::tests::requires_host_and_valid_content_length ... ok
+test api::http::tests::enforces_the_body_cap_before_reading ... ok
+test api::http::tests::rejects_transfer_encoding_and_expect ... ok
+test api::server::tests::route_table_lists_allowed_methods ... ok
+test api::http::tests::rejects_a_short_body ... ok
+test binary::bf16::tests::largest_finite_value_rounds_to_infinity ... ok
+test api::http::tests::parses_a_post_with_query_and_body ... ok
+test api::http::tests::parses_a_minimal_get ... ok
+test api::base64::tests::decodes_known_vectors ... ok
+test binary::bf16::tests::rounding_is_ties_to_even ... ok
+test binary::bf16::tests::special_values_are_preserved ... ok
+test binary::crc32::tests::check_value_matches_the_standard_vector ... ok
+test binary::crc32::tests::empty_input_has_the_standard_value ... ok
+test binary::bf16::tests::decodes_little_endian_bytes ... ok
+test binary::bf16::tests::known_values_convert_both_ways ... ok
+test binary::bf16::tests::rejects_length_mismatches ... ok
+test api::server::tests::requires_a_long_token_for_a_lan_bind ... ok
+test api::server::tests::rejects_a_non_loopback_bind_without_a_token ... ok
+test binary::crc32::tests::quick_brown_fox_matches_the_known_value ... ok
+test binary::crc32::tests::single_bit_changes_are_detected ... ok
+test api::server::tests::token_parser_rejects_non_integer_ids ... ok
+test binary::bf16::tests::round_trip_is_exact_for_representable_values ... ok
+test binary::reader::tests::read_vec_enforces_the_cap ... ok
+test binary::reader::tests::reads_big_endian_integers ... ok
+test binary::reader::tests::reads_little_endian_integers ... ok
+test binary::crc32::tests::streaming_matches_one_shot ... ok
+test binary::reader::tests::endian_can_be_changed_mid_stream ... ok
+test binary::reader::tests::reads_signed_values ... ok
+test binary::reader::tests::reads_floats ... ok
+test binary::reader::tests::skip_and_remaining_slice_are_consistent ... ok
+test binary::reader::tests::rejects_truncated_reads ... ok
+test binary::reader::tests::rejects_range_overflow ... ok
+test binary::reader::tests::zero_length_reads_are_allowed ... ok
+test binary::safetensors::tests::fingerprint_is_the_file_sha256 ... ok
+test binary::safetensors::tests::rejects_empty_tensor_names ... ok
+test binary::safetensors::tests::rejects_duplicate_tensor_names ... ok
+test binary::safetensors::tests::rejects_header_length_above_the_cap ... ok
+test binary::safetensors::tests::rejects_missing_and_unknown_tensor_fields ... ok
+test binary::safetensors::tests::rejects_invalid_shapes_and_offsets ... ok
+test binary::safetensors::tests::rejects_non_string_metadata ... ok
+test binary::safetensors::tests::accepts_zero_sized_tensors ... ok
+test binary::safetensors::tests::parses_f32_and_bf16_tensors ... ok
+test binary::safetensors::tests::parses_the_versioned_fixture ... ok
+test binary::safetensors::tests::rejects_non_utf8_and_non_object_headers ... ok
+test binary::safetensors::tests::rejects_overlapping_tensors ... ok
+test binary::safetensors::tests::rejects_short_files ... ok
+test binary::safetensors::tests::rejects_truncated_header ... ok
+test binary::safetensors::tests::rejects_unsupported_dtypes ... ok
+test binary::sha256::tests::empty_input_matches_the_standard_vector ... ok
+test binary::sha256::tests::hex_output_is_lowercase_and_64_characters ... ok
+test binary::sha256::tests::multiple_updates_match_one_shot ... ok
+test binary::sha256::tests::abc_matches_the_standard_vector ... ok
+test binary::sha256::tests::quick_brown_fox_matches_the_standard_vector ... ok
+test binary::sha256::tests::streaming_matches_one_shot ... ok
+test bundle::tests::duplicate_paths_are_rejected ... ok
+test bundle::tests::corrupt_magic_version_and_lengths_are_rejected ... ok
+test bundle::tests::empty_bundle_round_trips ... ok
+test bundle::tests::header_crc_and_catalog_digest_are_checked ... ok
+test bundle::tests::invalid_paths_are_rejected ... ok
+test bundle::tests::round_trip_preserves_sections_and_sorts_paths ... ok
+test bundle::tests::section_data_corruption_is_detected_by_verify ... ok
+test bundle::tests::unsorted_streaming_sources_are_rejected ... ok
+test bundle::tests::streaming_writer_round_trips_and_rejects_mismatches ... ok
+test cli::tests::accepts_version_aliases ... ok
+test cli::tests::help_contains_usage_and_exit_codes ... ok
+test cli::tests::main_entry_ignores_program_name ... ok
+test cli::tests::accepts_help_aliases ... ok
+test cli::tests::parses_audio_embed_and_search_queries ... ok
+test cli::tests::parses_audio_documents_and_defaults_the_source ... ok
+test cli::tests::parses_compact_arguments ... ok
+test cli::tests::parses_embed_defaults_and_ids ... ok
+test cli::tests::parses_embed_text_options ... ok
+test cli::tests::parses_image_documents_and_defaults_the_source ... ok
+test cli::tests::parses_index_defaults_and_ids_mode ... ok
+test cli::tests::parses_serve_defaults ... ok
+test cli::tests::parses_serve_options ... ok
+test cli::tests::parses_search_defaults_and_filters ... ok
+test cli::tests::parses_verify_arguments ... ok
+test cli::tests::rejects_audio_combined_with_text_image_or_ids ... ok
+test cli::tests::rejects_extra_arguments ... ok
+test cli::tests::rejects_image_combined_with_text_or_ids ... ok
+test cli::tests::rejects_invalid_audio_documents ... ok
+test cli::tests::rejects_invalid_embed_options ... ok
+test cli::tests::rejects_invalid_image_documents ... ok
+test cli::tests::rejects_missing_command ... ok
+test cli::tests::rejects_non_utf8_argument ... ok
+test cli::tests::rejects_unknown_command ... ok
+test cli::tests::serve_requires_data_dir_and_lan_token ... ok
+test error::tests::broken_pipe_is_detected ... ok
+test cli::tests::version_output_is_stable ... ok
+test error::tests::execution_errors_exit_with_code_one ... ok
+test error::tests::io_errors_exit_with_code_one ... ok
+test error::tests::corrupt_and_limit_messages_are_prefixed ... ok
+test error::tests::usage_errors_exit_with_code_two ... ok
+test index::hybrid::tests::a_single_list_preserves_its_order ... ok
+test index::hybrid::tests::equal_scores_break_ties_by_chunk_id ... ok
+test cli::tests::rejects_invalid_index_options ... ok
+test cli::tests::rejects_invalid_search_options ... ok
+test index::hybrid::tests::fuses_ranks_with_the_standard_constant ... ok
+test index::lexical::tests::equal_scores_break_ties_by_chunk_id ... ok
+test index::lexical::tests::ranks_by_term_frequency ... ok
+test index::lexical::tests::filters_exclude_documents_before_scoring ... ok
+test index::lexical::tests::unknown_terms_and_empty_queries_return_nothing ... ok
+test cli::tests::index_rejects_malformed_jsonl_before_writing ... ok
+test cli::tests::embed_ids_runs_the_tiny_model ... ok
+test binary::sha256::tests::million_a_matches_the_standard_vector ... ok
+test index::tests::empty_store_yields_no_hits ... ok
+test index::tests::hybrid_search_fuses_lexical_and_vector_ranks ... ok
+test index::tests::image_documents_are_vector_searchable_and_filterable ... ok
+test index::tokenize::tests::empty_and_separator_only_text_yield_no_tokens ... ok
+test index::tokenize::tests::enforces_the_input_size_cap ... ok
+test index::tokenize::tests::enforces_the_token_count_cap ... ok
+test index::tokenize::tests::enforces_the_token_length_cap ... ok
+test index::tokenize::tests::keeps_unicode_alphanumeric_runs ... ok
+test index::tokenize::tests::splits_on_punctuation_and_lowercases ... ok
+test index::vector::tests::dimension_mismatch_is_a_usage_error ... ok
+test index::vector::tests::empty_index_yields_no_hits ... ok
+test index::vector::tests::filters_exclude_documents ... ok
+test index::vector::tests::ranks_by_cosine_similarity ... ok
+test index::vector::tests::zero_and_non_finite_queries_are_rejected ... ok
+test index::tests::dimension_mismatch_is_rejected ... ok
+test index::tests::filters_apply_before_ranking ... ok
+test index::tests::lexical_search_orders_by_bm25 ... ok
+test index::tests::pagination_slices_the_deterministic_ranking ... ok
+test json::tests::accepts_raw_utf8 ... ok
+test index::tests::searches_are_deterministic ... ok
+test json::tests::decodes_string_escapes ... ok
+test json::tests::decodes_unicode_escapes ... ok
+test json::tests::enforces_container_entry_cap ... ok
+test json::tests::enforces_depth_cap ... ok
+test json::tests::enforces_input_size_cap ... ok
+test json::tests::enforces_string_size_cap ... ok
+test json::tests::enforces_total_value_cap ... ok
+test json::tests::number_accessors_are_conservative ... ok
+test json::tests::object_field_order_is_irrelevant ... ok
+test json::tests::parses_nested_containers ... ok
+test json::tests::parses_primitives ... ok
+test json::tests::preserves_integer_precision ... ok
+test json::tests::rejects_duplicate_keys ... ok
+test json::tests::rejects_empty_input ... ok
+test json::tests::rejects_invalid_escapes ... ok
+test json::tests::rejects_invalid_utf8_bytes ... ok
+test json::tests::rejects_lone_surrogates ... ok
+test json::tests::rejects_malformed_numbers ... ok
+test json::tests::rejects_non_string_object_keys ... ok
+test json::tests::rejects_trailing_commas ... ok
+test json::tests::rejects_trailing_content ... ok
+test json::tests::rejects_unescaped_control_characters ... ok
+test json::tests::serializer_emits_deterministic_object_order ... ok
+test json::tests::serializer_escapes_strings_and_controls ... ok
+test json::tests::serializer_rejects_non_finite_numbers ... ok
+test json::tests::serializer_round_trips_nested_values ... ok
+test media::audio::tests::rejects_out_of_range_rates_and_non_finite_samples ... ok
+test media::audio::tests::truncates_audio_above_the_model_cap ... ok
+test media::audio_preprocess::tests::computes_the_periodic_hann_window ... ok
+test media::audio_preprocess::tests::fft_matches_a_direct_dft ... ok
+test index::tests::request_validation_rejects_missing_inputs_and_bad_bounds ... ok
+test media::audio_preprocess::tests::mel_filters_are_triangular_and_cover_the_band ... ok
+test media::audio_preprocess::tests::rejects_empty_and_non_finite_audio ... ok
+test media::deflate::tests::adler32_matches_the_standard_value ... ok
+test media::deflate::tests::enforces_the_output_cap ... ok
+test media::deflate::tests::inflates_a_dynamic_huffman_block ... ok
+test media::audio_preprocess::tests::frames_and_mask_follow_the_semicausal_layout ... ok
+test media::deflate::tests::inflates_a_fixed_huffman_block ... ok
+test media::deflate::tests::inflates_a_stored_block ... ok
+test media::deflate::tests::inflates_empty_output ... ok
+test media::deflate::tests::rejects_an_adler32_mismatch ... ok
+test media::deflate::tests::rejects_bad_zlib_headers ... ok
+test media::deflate::tests::rejects_inputs_above_the_compressed_cap ... ok
+test media::deflate::tests::rejects_trailing_bytes ... ok
+test media::deflate::tests::rejects_truncated_streams ... ok
+test media::jpeg::tests::accepts_an_adobe_ycbcr_transform ... ok
+test media::jpeg::tests::decodes_a_committed_420_color_fixture ... ok
+test media::jpeg::tests::decodes_a_committed_420_gradient_fixture ... ok
+test media::jpeg::tests::decodes_a_committed_444_color_fixture ... ok
+test media::jpeg::tests::decode_file_reads_a_committed_fixture ... ok
+test media::jpeg::tests::decodes_a_committed_grayscale_fixture ... ok
+test media::jpeg::tests::decodes_a_committed_rgb_fixture ... ok
+test media::jpeg::tests::decodes_a_dc_only_block_to_a_constant_image ... ok
+test media::jpeg::tests::decodes_a_nonzero_dc_coefficient_exactly ... ok
+test media::jpeg::tests::decodes_restart_intervals_and_resets_predictors ... ok
+test media::jpeg::tests::enforces_dimension_and_pixel_caps ... ok
+test media::jpeg::tests::rejects_16_bit_quantization_and_invalid_huffman_tables ... ok
+test media::jpeg::tests::rejects_a_missing_restart_marker ... ok
+test media::jpeg::tests::rejects_a_bad_soi_and_trailing_bytes ... ok
+test media::jpeg::tests::rejects_a_wrong_restart_marker ... ok
+test media::jpeg::tests::rejects_missing_eoi_and_missing_scan_data ... ok
+test media::jpeg::tests::rejects_missing_tables_and_invalid_scan_parameters ... ok
+test media::jpeg::tests::rejects_non_eight_bit_precision_and_too_many_components ... ok
+test media::jpeg::tests::rejects_progressive_and_unsupported_frame_markers ... ok
+test media::jpeg::tests::rejects_unsupported_adobe_color_transforms ... ok
+test media::png::tests::decode_file_reads_a_committed_fixture ... ok
+test media::png::tests::decodes_a_dynamic_huffman_gradient ... ok
+test media::jpeg::tests::rejects_every_truncation_of_a_valid_fixture ... ok
+test media::png::tests::decodes_grayscale_with_average_and_up_filters ... ok
+test media::png::tests::decodes_rgb_with_sub_filter ... ok
+test media::png::tests::decodes_rgba_with_paeth_filter ... ok
+test media::png::tests::enforces_dimension_pixel_and_decompressed_caps ... ok
+test media::png::tests::rejects_a_bad_signature ... ok
+test media::png::tests::rejects_a_chunk_crc_mismatch ... ok
+test media::png::tests::rejects_a_decompressed_length_mismatch ... ok
+test media::png::tests::rejects_every_truncation_of_a_valid_fixture ... ok
+test media::png::tests::rejects_invalid_filter_bytes ... ok
+test media::png::tests::rejects_missing_iend_or_idat ... ok
+test media::png::tests::rejects_unknown_critical_and_transparency_chunks ... ok
+test media::png::tests::rejects_unsupported_image_features ... ok
+test media::wav::tests::decodes_pcm16_and_downmixes_stereo ... ok
+test media::wav::tests::decodes_pcm8_pcm24_and_float32 ... ok
+test media::wav::tests::rejects_non_finite_float_samples ... ok
+test media::wav::tests::rejects_malformed_headers ... ok
+test media::wav::tests::rejects_unsupported_codecs_and_bit_depths ... ok
+test model::audio::tests::rejects_a_configuration_without_audio ... ok
+test model::audio::tests::rejects_float16_audio ... ok
+test model::audio::tests::silu_and_softplus_are_finite_at_extremes ... ok
+test model::config::tests::accepts_a_composite_model_configuration ... ok
+test model::audio::tests::computes_the_frozen_context_and_position_count ... ok
+test model::config::tests::parses_a_consistent_text_configuration ... ok
+test model::config::tests::rejects_a_non_full_last_layer ... ok
+test model::config::tests::rejects_missing_and_inconsistent_fields ... ok
+test model::config::tests::rejects_unsupported_architecture_choices ... ok
+test model::prompt::tests::apply_preserves_the_text ... ok
+test model::config::tests::tensor_inventory_matches_the_frozen_model_shape ... ok
+test model::prompt::tests::parses_official_prompt_names ... ok
+test model::prompt::tests::prefixes_match_the_official_configuration ... ok
+test model::prompt::tests::prompt_roles_map_to_prefixes ... ok
+test model::source::tests::relative_paths_are_validated ... ok
+test jobs::tests::runs_a_task_and_records_the_outcome ... ok
+test model::tokenizer::tests::adds_bos_and_eos ... ok
+test model::tokenizer::tests::byte_fallback_round_trips ... ok
+test jobs::tests::enforces_the_pending_cap ... ok
+test media::audio::tests::downsampling_removes_energy_above_the_new_nyquist ... ok
+test model::tokenizer::tests::decodes_reference_texts ... ok
+test model::tokenizer::tests::exposes_special_ids ... ok
+test model::tokenizer::tests::encodes_reference_texts ... ok
+test model::vision::tests::axial_frequencies_match_the_reference_layout ... ok
+test model::vision::tests::axial_rope_rejects_a_non_divisible_head_dimension ... ok
+test model::vision::tests::axial_rope_rotates_the_x_and_y_halves ... ok
+test model::tokenizer::tests::rejects_oversized_input ... ok
+test model::weights::tests::rejects_a_non_finite_weight ... ok
+test media::audio::tests::resampling_preserves_length_and_a_sine_wave ... ok
+test storage::codec::tests::decoder_rejects_invalid_utf8 ... ok
+test storage::codec::tests::decoder_rejects_oversized_strings_before_reading ... ok
+test storage::codec::tests::decoder_rejects_truncated_values ... ok
+test storage::codec::tests::encoder_enforces_its_cap_before_growing ... ok
+test model::tokenizer::tests::rejects_unknown_ids_when_decoding ... ok
+test storage::codec::tests::finish_rejects_trailing_bytes ... ok
+test storage::codec::tests::round_trips_scalars_and_strings ... ok
+test storage::journal::tests::a_prefix_of_a_second_record_keeps_the_first_record ... ok
+test storage::journal::tests::a_prefix_of_one_record_is_recovered_as_an_empty_journal ... ok
+test model::tokenizer::tests::skips_special_tokens_when_requested ... ok
+test model::tokenizer::tests::rejects_unsupported_or_inconsistent_documents ... ok
+test storage::journal::tests::empty_file_scans_as_an_empty_journal ... ok
+test storage::journal::tests::footer_corruption_at_the_tail_is_treated_as_uncommitted ... ok
+test storage::journal::tests::header_corruption_with_an_intact_footer_is_reported ... ok
+test storage::journal::tests::mid_file_corruption_is_reported_even_with_later_records ... ok
+test jobs::tests::cancels_a_queued_job ... ok
+test storage::journal::tests::payload_corruption_is_reported ... ok
+test model::weights::tests::rejects_missing_and_shape_incompatible_weights ... ok
+test storage::journal::tests::sequence_gaps_are_rejected ... ok
+test model::weights::tests::loads_the_tiny_fixture_and_checks_the_inventory ... ok
+test storage::journal::tests::unsupported_versions_and_record_types_are_rejected ... ok
+test storage::model::tests::chunk_ids_must_be_positive ... ok
+test storage::model::tests::chunk_normalizes_its_embedding ... ok
+test storage::model::tests::chunk_rejects_invalid_embeddings ... ok
+test storage::model::tests::document_fields_are_validated ... ok
+test storage::model::tests::document_ids_reject_invalid_values ... ok
+test storage::model::tests::stored_embeddings_must_be_normalized ... ok
+test storage::model::tests::metadata_enforces_caps_and_control_characters ... ok
+test storage::model::tests::transaction_decode_rejects_unknown_schema_and_trailing_bytes ... ok
+test storage::model::tests::transaction_decode_rejects_unknown_tags_and_short_payloads ... ok
+test storage::model::tests::transaction_round_trips_every_operation ... ok
+test storage::model::tests::transaction_rejects_empty_and_oversized_operation_lists ... ok
+test storage::snapshot::tests::empty_snapshot_parses ... ok
+test storage::snapshot::tests::header_corruption_is_detected ... ok
+test storage::snapshot::tests::header_round_trips ... ok
+test storage::snapshot::tests::invalid_headers_are_rejected_before_writing ... ok
+test storage::snapshot::tests::truncated_snapshot_is_rejected ... ok
+test storage::journal::tests::missing_journal_is_an_empty_file ... ok
+test index::tests::token_cap_is_an_explicit_build_error ... ok
+test storage::journal::tests::creation_synchronizes_the_parent_directory ... ok
+test storage::journal::tests::append_rejects_oversized_payloads_before_writing ... ok
+test storage::journal::tests::reopening_truncates_the_uncommitted_tail_and_allows_appends ... ok
+test storage::journal::tests::append_and_scan_round_trip ... ok
+test index::tests::vector_search_orders_by_cosine ... ok
+test cli::tests::index_search_and_verify_work_with_the_tiny_model ... ok
+test storage::snapshot::tests::atomic_write_replaces_the_snapshot ... ok
+test storage::store::tests::audio_documents_persist_and_empty_chunk_lists_are_rejected ... ok
+test storage::store::tests::a_corrupted_snapshot_header_is_rejected ... ok
+test storage::store::tests::an_old_journal_after_snapshot_is_skipped_and_new_records_apply ... ok
+test storage::store::tests::corruption_is_reported_instead_of_truncated ... ok
+test storage::store::tests::compaction_preserves_the_dimension_after_deleting_every_chunk ... ok
+test storage::store::tests::compaction_of_an_empty_store_round_trips ... ok
+test storage::store::tests::compaction_preserves_ids_next_chunk_id_and_sequences ... ok
+test storage::store::tests::delete_missing_document_is_a_no_op ... ok
+test storage::store::tests::duplicate_documents_are_rejected_without_writing ... ok
+test storage::store::tests::documents_and_chunks_survive_reopen ... ok
+test storage::store::tests::embedding_dimensions_must_match_across_the_store ... ok
+test storage::store::tests::deletion_cascades_chunks_and_survives_reopen ... ok
+test storage::store::tests::image_documents_persist_and_replay ... ok
+test storage::store::tests::invalid_transaction_payloads_are_rejected_on_open ... ok
+test storage::store::tests::oversized_document_payload_is_rejected_before_writing ... ok
+test storage::store::tests::journal_sequence_continues_after_reopen ... ok
+test tensor::dtype::tests::names_and_sizes_are_stable ... ok
+test tensor::dtype::tests::parses_supported_dtypes ... ok
+test tensor::dtype::tests::rejects_fp16_and_unknown_dtypes ... ok
+test tensor::kernels::tests::attention_rejects_invalid_shapes ... ok
+test tensor::kernels::tests::bidirectional_attention_matches_full_attention ... ok
+test tensor::kernels::tests::bidirectional_attention_rejects_invalid_shapes ... ok
+test tensor::kernels::tests::causal_attention_masks_future_positions ... ok
+test tensor::kernels::tests::dot_product_is_correct ... ok
+test tensor::kernels::tests::elementwise_operations_reject_length_mismatches ... ok
+test tensor::kernels::tests::elementwise_operations_work ... ok
+test tensor::kernels::tests::geglu_multiplies_the_activated_gate ... ok
+test tensor::kernels::tests::gelu_is_correct_at_reference_points ... ok
+test tensor::kernels::tests::grouped_query_attention_repeats_key_value_heads_in_order ... ok
+test tensor::kernels::tests::in_place_addition_works ... ok
+test tensor::kernels::tests::l2_normalization_produces_unit_vectors ... ok
+test tensor::kernels::tests::l2_normalization_rejects_zero_and_non_finite_vectors ... ok
+test tensor::kernels::tests::linear_projects_rows_against_weight_rows ... ok
+test tensor::kernels::tests::linear_rejects_shape_mismatches ... ok
+test tensor::kernels::tests::matmul_identity_is_identity ... ok
+test tensor::kernels::tests::matmul_into_reuses_the_buffer ... ok
+test tensor::kernels::tests::matmul_is_correct ... ok
+test tensor::kernels::tests::matmul_rejects_shape_mismatches ... ok
+test tensor::kernels::tests::mean_pool_averages_rows ... ok
+test tensor::kernels::tests::neon_dot_matches_scalar_for_all_tail_lengths ... ok
+test tensor::kernels::tests::neon_elementwise_operations_match_scalar_exactly ... ok
+test tensor::kernels::tests::neon_linear_matches_scalar ... ok
+test tensor::kernels::tests::neon_matmul_matches_scalar ... ok
+test tensor::kernels::tests::neon_microbenchmark ... ignored, microbenchmark; run with --release --ignored --nocapture
+test tensor::kernels::tests::neon_normalization_and_pooling_match_scalar ... ok
+test tensor::kernels::tests::neon_rms_norm_matches_scalar ... ok
+test tensor::kernels::tests::rms_norm_handles_zero_input_with_epsilon ... ok
+test tensor::kernels::tests::rms_norm_is_correct ... ok
+test tensor::kernels::tests::rms_norm_rejects_invalid_inputs ... ok
+test tensor::kernels::tests::rms_norm_rows_normalizes_each_row ... ok
+test tensor::kernels::tests::rms_norm_rows_rejects_invalid_inputs ... ok
+test tensor::kernels::tests::rope_at_position_zero_is_identity ... ok
+test tensor::kernels::tests::rope_rejects_invalid_parameters ... ok
+test tensor::kernels::tests::rope_rotates_and_preserves_the_norm ... ok
+test tensor::kernels::tests::rope_with_inv_freq_matches_the_reference_rotation ... ok
+test tensor::kernels::tests::scale_rejects_non_finite_factor ... ok
+test tensor::kernels::tests::sliding_window_restricts_each_position_to_its_neighbourhood ... ok
+test tensor::kernels::tests::softmax_handles_infinities ... ok
+test tensor::kernels::tests::softmax_is_stable_for_large_values ... ok
+test tensor::kernels::tests::softmax_rejects_nan_and_empty_input ... ok
+test tensor::kernels::tests::softmax_sums_to_one_and_preserves_order ... ok
+test tensor::kernels::tests::truncation_renormalizes_the_slice ... ok
+test tensor::owned::tests::builds_a_tensor_with_matching_shape ... ok
+test tensor::owned::tests::detects_non_finite_values ... ok
+test tensor::owned::tests::rejects_length_mismatch ... ok
+test tensor::owned::tests::scalar_tensor_has_one_element ... ok
+test tensor::owned::tests::view_checks_length_and_borrows ... ok
+test tensor::owned::tests::zeros_and_filled_respect_the_shape ... ok
+test tensor::shape::tests::computes_element_count_and_strides ... ok
+test tensor::shape::tests::rejects_dimensions_above_the_cap ... ok
+test tensor::shape::tests::rejects_element_count_overflow ... ok
+test tensor::shape::tests::rejects_rank_above_the_cap ... ok
+test tensor::shape::tests::reshape_requires_the_same_element_count ... ok
+test tensor::shape::tests::scalar_shape_has_one_element_and_no_dimension ... ok
+test tensor::shape::tests::zero_dimension_yields_zero_elements ... ok
+test storage::store::tests::read_only_views_see_writer_state_and_ignore_torn_tails ... ok
+test storage::store::tests::verify_reports_the_committed_prefix_without_modifying_the_journal ... ok
+test storage::store::tests::verify_reports_snapshot_and_journal_records ... ok
+test storage::store::tests::writer_lock_rejects_a_second_store ... ok
+test storage::store::tests::a_truncated_journal_temp_file_is_ignored_at_every_byte ... ok
+test storage::store::tests::crash_injection_at_every_byte_recovers_the_committed_prefix ... ok
+test storage::store::tests::a_truncated_snapshot_file_is_rejected ... ok
+test storage::store::tests::a_truncated_snapshot_temp_file_is_ignored_at_every_byte ... ok
+test storage::store::tests::crash_injection_keeps_complete_transactions ... ok
+
+test result: ok. 374 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.12s
+
+     Running unittests src/main.rs (target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-942fcddd3589fc2e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audio.rs (target/aarch64-apple-darwin/debug/deps/audio-2cbe8526307f51e5)
+
+running 4 tests
+test audio_samples_have_the_expected_shape ... ok
+test rejects_malformed_wav_input_without_panicking ... ok
+test decodes_and_resamples_the_committed_audio_fixtures ... ok
+test reproduces_the_official_audio_preprocessing_fixtures ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/audio_embeddings.rs (target/aarch64-apple-darwin/debug/deps/audio_embeddings-ff1414d20a7f9e96)
+
+running 4 tests
+test all_audio_embeddings_match_the_official_reference ... ignored, full six-case audio parity run; execute manually
+test text_queries_rank_the_expected_audio_clip_first ... ignored, text-to-audio ranking over the six-case corpus; execute manually
+test rejects_an_out_of_range_embedding_dimension ... ok
+test audio_embedding_matches_the_official_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audio_tiny.rs (target/aarch64-apple-darwin/debug/deps/audio_tiny-f050f89301e17f13)
+
+running 3 tests
+test tiny_audio_fixture_files_are_committed ... ok
+test tiny_audio_model_matches_the_official_fixture ... ok
+test tiny_audio_fixture_is_deterministic ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/bundle_loading.rs (target/aarch64-apple-darwin/debug/deps/bundle_loading-93db20e1226c9fb8)
+
+running 9 tests
+test frozen_audio_bundle_loads ... ignored, loads the frozen audio tower from the development cache
+test frozen_image_bundle_loads ... ignored, loads the frozen vision tower from the development cache
+test frozen_model_bundle_matches_the_directory ... ignored, loads the frozen model bundle from the development cache
+test write_tiny_bundle_for_embedded_build ... ignored, writes a tiny bundle for an embedded-model build
+test missing_weights_section_is_a_typed_error ... ok
+test corrupt_bundle_file_is_rejected_by_the_helper ... ok
+test text_model_from_bundle_matches_the_directory ... ok
+test tokenizer_from_bundle_matches_the_directory ... ok
+test text_model_helper_loads_from_a_bundle_file ... ok
+
+test result: ok. 5 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (target/aarch64-apple-darwin/debug/deps/cli-25f8c37191181d44)
+
+running 15 tests
+test audio_documents_can_be_indexed_and_found_by_text_or_audio ... ignored, loads the full model and embeds audio documents; execute manually
+test indexes_an_image_and_finds_it_with_a_text_query ... ignored, loads the full multimodal model and runs the scalar vision tower
+test text_and_image_queries_rank_image_documents ... ignored, loads the full multimodal model and embeds two images with the scalar vision tower
+test extra_arguments_are_rejected ... ok
+test embed_help_is_available ... ok
+test embed_rejects_an_unknown_image_extension ... ok
+test missing_command_is_a_usage_error ... ok
+test unknown_command_is_a_usage_error ... ok
+test embed_rejects_a_dimension_above_the_model_output ... ok
+test embed_rejects_an_out_of_vocabulary_id ... ok
+test embed_ids_prints_a_json_vector ... ok
+test version_prints_name_version_and_target ... ok
+test help_explains_usage_and_exit_codes ... ok
+test version_aliases_are_equivalent ... ok
+test serve_command_starts_serves_and_stops ... ok
+
+test result: ok. 12 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/formats.rs (target/aarch64-apple-darwin/debug/deps/formats-c3afe6891bf013c7)
+
+running 4 tests
+test strict_json_and_fp32_tensors_compose ... ok
+test fixture_decodes_through_the_public_api ... ok
+test truncated_and_corrupted_fixtures_are_rejected ... ok
+test read_file_bounded_accepts_and_rejects_by_cap ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/http_api.rs (target/aarch64-apple-darwin/debug/deps/http_api-dc92334032efa53b)
+
+running 13 tests
+test image_embedding_over_http_returns_a_model_vector ... ignored, loads the frozen model and runs the scalar vision tower
+test text_embedding_over_http_returns_a_normalized_model_vector ... ignored, loads the frozen model and tokenizer
+test concurrent_health_requests_all_succeed ... ok
+test shutdown_endpoint_stops_the_server ... ok
+test audio_embeddings_work_with_the_tiny_audio_fixture ... ok
+test bearer_token_is_enforced_when_configured ... ok
+test health_ready_models_and_stats_are_available ... ok
+test audio_document_ingestion_job_and_audio_query_work ... ok
+test token_embeddings_are_real_vectors_and_invalid_inputs_are_typed ... ok
+test unicode_documents_and_percent_encoded_ids_round_trip ... ok
+test malformed_requests_are_rejected_without_panicking ... ok
+test documents_jobs_search_and_delete_work_together ... ok
+test connection_limit_and_slow_request_timeout_are_bounded ... ok
+
+test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.07s
+
+     Running tests/image_embeddings.rs (target/aarch64-apple-darwin/debug/deps/image_embeddings-6aa8cce8675bcb06)
+
+running 4 tests
+test all_image_embeddings_match_the_official_reference ... ignored, full seven-case image parity run; execute manually
+test rotation_and_aspect_vision_parity ... ignored, vision parity for the rotation and aspect-ratio cases
+test image_embedding_matches_the_official_reference ... ok
+test rejects_an_out_of_range_embedding_dimension ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/media.rs (target/aarch64-apple-darwin/debug/deps/media-f7f68c035c341167)
+
+running 7 tests
+test inflate_enforces_the_output_cap_through_the_public_api ... ok
+test inflates_a_zlib_stream_through_the_public_api ... ok
+test rejects_a_truncated_png_fixture ... ok
+test jpeg_and_png_expose_the_same_image_type ... ok
+test rejects_a_truncated_jpeg_fixture ... ok
+test decodes_a_committed_png_fixture_through_the_public_api ... ok
+test decodes_a_committed_jpeg_fixture_through_the_public_api ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/preprocess.rs (target/aarch64-apple-darwin/debug/deps/preprocess-139040e796dc5448)
+
+running 4 tests
+test computes_the_official_aspect_ratio_preserving_size ... ok
+test rejects_an_unsupported_visual_token_budget ... ok
+test preprocesses_a_jpeg_decoded_image ... ok
+test reproduces_the_official_preprocessing_fixtures ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/release_e2e.rs (target/aarch64-apple-darwin/debug/deps/release_e2e-0f4adc8a048607db)
+
+running 1 test
+test release_lifecycle_runs_in_a_sanitized_environment ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/text_bench.rs (target/aarch64-apple-darwin/debug/deps/text_bench-76ab774d1d655451)
+
+running 1 test
+test text_embedding_latency_and_throughput ... ignored, loads the frozen model; run explicitly with --release --ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/text_embeddings.rs (target/aarch64-apple-darwin/debug/deps/text_embeddings-84e66ea60685ce9a)
+
+running 6 tests
+test text_model_is_send_and_sync ... ok
+test real_model_parity_when_the_model_cache_is_present ... ok
+test invalid_token_sequences_are_rejected ... ok
+test tiny_model_is_deterministic_and_rejects_invalid_dimensions ... ok
+test tiny_model_matches_the_official_layer_and_embedding_outputs ... ok
+test tiny_model_supports_bounded_concurrent_calls ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tokenizer.rs (target/aarch64-apple-darwin/debug/deps/tokenizer-1cec1fb2b8ce5476)
+
+running 3 tests
+test mini_tokenizer_reproduces_the_golden_corpus ... ok
+test manifest_records_the_frozen_model_and_fixtures ... ok
+test full_tokenizer_parity_when_the_model_cache_is_present ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+   Doc-tests seldon_vault_lite
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+       15.14 real         1.40 user         4.27 sys
+           260734976  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               48725  page reclaims
+               12693  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 831  messages sent
+                7472  messages received
+                   3  signals received
+               38154  voluntary context switches
+               48227  involuntary context switches
+           410095139  instructions retired
+           197920552  cycles elapsed
+             6357472  peak memory footprint

@@ -1,0 +1,29 @@
+   Compiling seldon-vault-lite v0.1.0 (/Users/fouadassani/projets/seldon-vault-lite-rust)
+    Finished `release` profile [optimized] target(s) in 2.93s
+     Running tests/text_bench.rs (target/aarch64-apple-darwin/release/deps/text_bench-f8bac8ec1118e7c2)
+
+running 1 test
+sequential: p50 164.522208ms, p95 173.227042ms, min 159.457ms, max 173.227042ms
+concurrent: 20 requests on 4 threads in 1.000594167s (19.99 requests/s)
+test text_embedding_latency_and_throughput ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.61s
+
+       13.93 real        19.16 user         1.12 sys
+          2778988544  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              243664  page reclaims
+                7344  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   3  signals received
+                 159  voluntary context switches
+               49551  involuntary context switches
+           289919673  instructions retired
+           112474767  cycles elapsed
+             6046176  peak memory footprint

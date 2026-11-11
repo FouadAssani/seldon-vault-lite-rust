@@ -1,0 +1,244 @@
+{
+  "suites": [
+    {
+      "label": "src/lib.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-e2cfbd712b866f97",
+      "result": "ok",
+      "passed": 374,
+      "failed": 0,
+      "ignored": 1,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 9.12
+    },
+    {
+      "label": "src/main.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/seldon_vault_lite-942fcddd3589fc2e",
+      "result": "ok",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/audio.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/audio-2cbe8526307f51e5",
+      "result": "ok",
+      "passed": 4,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.06
+    },
+    {
+      "label": "tests/audio_embeddings.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/audio_embeddings-ff1414d20a7f9e96",
+      "result": "ok",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 2,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/audio_tiny.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/audio_tiny-f050f89301e17f13",
+      "result": "ok",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.01
+    },
+    {
+      "label": "tests/bundle_loading.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/bundle_loading-93db20e1226c9fb8",
+      "result": "ok",
+      "passed": 5,
+      "failed": 0,
+      "ignored": 4,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/cli.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/cli-25f8c37191181d44",
+      "result": "ok",
+      "passed": 12,
+      "failed": 0,
+      "ignored": 3,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.37
+    },
+    {
+      "label": "tests/formats.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/formats-c3afe6891bf013c7",
+      "result": "ok",
+      "passed": 4,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/http_api.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/http_api-dc92334032efa53b",
+      "result": "ok",
+      "passed": 11,
+      "failed": 0,
+      "ignored": 2,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 1.07
+    },
+    {
+      "label": "tests/image_embeddings.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/image_embeddings-6aa8cce8675bcb06",
+      "result": "ok",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 2,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/media.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/media-f7f68c035c341167",
+      "result": "ok",
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/preprocess.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/preprocess-139040e796dc5448",
+      "result": "ok",
+      "passed": 4,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.16
+    },
+    {
+      "label": "tests/release_e2e.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/release_e2e-0f4adc8a048607db",
+      "result": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.09
+    },
+    {
+      "label": "tests/text_bench.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/text_bench-76ab774d1d655451",
+      "result": "ok",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 1,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/text_embeddings.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/text_embeddings-84e66ea60685ce9a",
+      "result": "ok",
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.0
+    },
+    {
+      "label": "tests/tokenizer.rs",
+      "binary": "target/aarch64-apple-darwin/debug/deps/tokenizer-1cec1fb2b8ce5476",
+      "result": "ok",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered": 0,
+      "seconds": 0.64
+    }
+  ],
+  "totals": {
+    "passed": 438,
+    "failed": 0,
+    "ignored": 15,
+    "seconds": 11.52
+  },
+  "cargo_test_fast": {
+    "real_s": 15.14,
+    "user_s": 1.4,
+    "sys_s": 4.27,
+    "max_rss_bytes": 260734976,
+    "peak_footprint_bytes": 6357472
+  },
+  "text_bench": {
+    "real_s": 13.93,
+    "user_s": 19.16,
+    "sys_s": 1.12,
+    "max_rss_bytes": 2778988544,
+    "peak_footprint_bytes": 6046176
+  },
+  "embeds": {
+    "text": {
+      "real_s": 7.61,
+      "user_s": 7.1,
+      "sys_s": 0.4,
+      "max_rss_bytes": 2810183680,
+      "peak_footprint_bytes": 1281968456
+    },
+    "text_warmup": {
+      "real_s": 11.84,
+      "user_s": 7.25,
+      "sys_s": 1.7,
+      "max_rss_bytes": 2811265024,
+      "peak_footprint_bytes": 1282607408
+    },
+    "image70": {
+      "real_s": 16.5,
+      "user_s": 15.75,
+      "sys_s": 0.56,
+      "max_rss_bytes": 3578216448,
+      "peak_footprint_bytes": 1999948824
+    },
+    "image70_warmup": {
+      "real_s": 16.54,
+      "user_s": 15.77,
+      "sys_s": 0.6,
+      "max_rss_bytes": 3579297792,
+      "peak_footprint_bytes": 2001833008
+    },
+    "audio": {
+      "real_s": 8.64,
+      "user_s": 7.94,
+      "sys_s": 0.57,
+      "max_rss_bytes": 4034117632,
+      "peak_footprint_bytes": 2507951272
+    },
+    "audio_warmup": {
+      "real_s": 8.61,
+      "user_s": 7.93,
+      "sys_s": 0.59,
+      "max_rss_bytes": 4033495040,
+      "peak_footprint_bytes": 2507033768
+    }
+  }
+}

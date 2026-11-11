@@ -1,0 +1,27 @@
+release-e2e: binary=/Users/fouadassani/projets/seldon-vault-lite-rust/target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite
+release-e2e: staging=/var/folders/h8/zv0c_0b978ldk6rmrpln9mkw0000gn/T//seldon-release-e2e.FXybaI/install
+release-e2e: sanitized environment HOME=/var/folders/h8/zv0c_0b978ldk6rmrpln9mkw0000gn/T//seldon-release-e2e.FXybaI/home TMPDIR=/var/folders/h8/zv0c_0b978ldk6rmrpln9mkw0000gn/T//seldon-release-e2e.FXybaI/tmp PATH=/usr/bin:/bin:/usr/sbin:/sbin
+release-e2e: artifact checks
+release-e2e: Gatekeeper rejected the ad-hoc build (expected for local use)
+release-e2e: Cargo graph contains only the root crate
+release-e2e: linked libraries: /usr/lib/libSystem.B.dylib
+release-e2e: deployment target: minos 11.0
+release-e2e: signature: adhoc; Gatekeeper: rejected
+release-e2e: WARNING: sandbox-exec is unavailable in this environment; CLI offline check runs without network isolation
+release-e2e: embedded model probe passed
+release-e2e: text embedding
+release-e2e: image embedding
+release-e2e: audio embedding
+release-e2e: indexing text, image, and audio documents
+release-e2e: lexical, vector, and hybrid search
+release-e2e: verification and compaction
+release-e2e: restart after compaction preserved all documents
+release-e2e: HTTP API lifecycle
+release-e2e: server listening at 127.0.0.1:63950
+release-e2e: HTTP server stopped cleanly
+release-e2e: HTTP restart persistence
+release-e2e: server listening at 127.0.0.1:63963
+release-e2e: HTTP restart preserved all documents
+release-e2e: report copied to /Users/fouadassani/projets/seldon-vault-lite-rust/rapport/2026-11-11_23-08-37/release-e2e-report.json
+release-e2e: PASSED
+{"status":"passed","timestamp":"2026-11-11T22:19:04Z","platform":"arm64","os":"26.5.1","binary":"/Users/fouadassani/projets/seldon-vault-lite-rust/target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite","binary_sha256":"b2e697b78602d8eaf82fc170b8d92056ff0088a38bcb77bbfd6f648cf52902e8","binary_bytes":1539215600,"version":"seldon-vault-lite 0.1.0 (aarch64-apple-darwin)","signing":"adhoc","gatekeeper":"rejected","network_isolation":"disabled","dimension":768,"documents":3,"fixtures":"/Users/fouadassani/projets/seldon-vault-lite-rust/fixtures/media","staging":"/var/folders/h8/zv0c_0b978ldk6rmrpln9mkw0000gn/T//seldon-release-e2e.FXybaI/install"}
