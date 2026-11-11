@@ -87,15 +87,37 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
     read_file_bounded(path, MAX_JOURNAL_BYTES)
 }
 
+/// Returns the sequence of the first complete-looking record header.
+///
+/// Returns None for an empty file or an invalid first header. The full scanner
+/// remains responsible for deciding whether an invalid header is a torn tail
+/// or corruption.
+pub fn first_sequence(bytes: &[u8]) -> Result<Option<u64>> {
+    if bytes.len() < HEADER_LEN {
+        return Ok(None);
+    }
+    match parse_header(bytes, 0) {
+        HeaderParse::Valid(header) => Ok(Some(header.sequence)),
+        HeaderParse::Invalid => Ok(None),
+    }
+}
+
+/// Scans journal bytes starting at sequence one.
+pub fn scan(bytes: &[u8]) -> Result<Scan<'_>> {
+    scan_with_start(bytes, 1)
+}
+
 /// Scans journal bytes and returns committed records plus recovery metadata.
 ///
-/// The scanner validates sequence monotonicity, framing, footer agreement, and
-/// payload checksums. It never allocates from an untrusted length beyond the
-/// documented payload cap.
-pub fn scan(bytes: &[u8]) -> Result<Scan<'_>> {
+/// The scanner validates sequence monotonicity from start_sequence, framing,
+/// footer agreement, and payload checksums. It never allocates from an
+/// untrusted length beyond the documented payload cap. A compacted journal may
+/// start at a sequence above one; a journal written before compaction starts at
+/// one and is filtered by the caller against a snapshot base.
+pub fn scan_with_start(bytes: &[u8], start_sequence: u64) -> Result<Scan<'_>> {
     let mut records = Vec::new();
     let mut offset = 0usize;
-    let mut expected_sequence = 1u64;
+    let mut expected_sequence = start_sequence;
 
     while offset < bytes.len() {
         let remaining = bytes.len() - offset;
@@ -453,7 +475,7 @@ fn has_committed_footer(bytes: &[u8], record_offset: usize) -> bool {
     false
 }
 
-fn encode_record(sequence: u64, payload: &[u8]) -> Vec<u8> {
+pub(crate) fn encode_record(sequence: u64, payload: &[u8]) -> Vec<u8> {
     let mut record = Vec::with_capacity(HEADER_LEN + payload.len() + FOOTER_LEN);
     let mut header = [0u8; HEADER_LEN];
     header[0..4].copy_from_slice(&RECORD_MAGIC);

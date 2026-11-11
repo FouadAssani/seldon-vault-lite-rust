@@ -12,10 +12,10 @@ pub mod tokenize;
 pub mod vector;
 
 use crate::error::{Error, Result};
-use crate::storage::Store;
 use crate::storage::model::{
     Chunk, ChunkId, Document, DocumentId, MAX_EMBEDDING_DIMENSION, Metadata, Modality,
 };
+use crate::storage::{ReadOnlyStore, Store};
 
 /// Maximum number of hits returned by one search.
 pub const MAX_SEARCH_LIMIT: usize = 1000;
@@ -249,16 +249,40 @@ impl<'a> Index<'a> {
     /// Tokenization is capped per chunk; a document that exceeds the cap is an
     /// explicit limit error rather than a silently truncated index entry.
     pub fn build(store: &'a Store) -> Result<Self> {
-        let mut chunks = Vec::with_capacity(store.chunk_count());
-        for chunk in store.chunks() {
-            let document = store.document(chunk.document_id()).ok_or_else(|| {
+        Self::build_from(
+            store.chunks(),
+            |id| store.document(id),
+            store.embedding_dimension(),
+        )
+    }
+
+    /// Builds the index from a lock-free read-only store view.
+    ///
+    /// This is safe while a writer holds the store lock. A concurrent torn
+    /// append is excluded from the read-only view by its recovery logic.
+    pub fn build_read_only(store: &'a ReadOnlyStore) -> Result<Self> {
+        Self::build_from(
+            store.chunks(),
+            |id| store.document(id),
+            store.embedding_dimension(),
+        )
+    }
+
+    fn build_from<I, F>(chunks: I, document: F, dimension: Option<usize>) -> Result<Self>
+    where
+        I: Iterator<Item = &'a Chunk>,
+        F: Fn(&DocumentId) -> Option<&'a Document>,
+    {
+        let mut indexed = Vec::new();
+        for chunk in chunks {
+            let document = document(chunk.document_id()).ok_or_else(|| {
                 Error::internal(format!(
                     "chunk {} references missing document {}",
                     chunk.id(),
                     chunk.document_id()
                 ))
             })?;
-            if let Some(dimension) = store.embedding_dimension()
+            if let Some(dimension) = dimension
                 && chunk.dimension() != dimension
             {
                 return Err(Error::internal(format!(
@@ -268,18 +292,18 @@ impl<'a> Index<'a> {
                 )));
             }
             let tokens = tokenize::tokenize(chunk.text(), tokenize::MAX_INDEX_TOKENS_PER_CHUNK)?;
-            chunks.push(IndexedChunk {
+            indexed.push(IndexedChunk {
                 chunk,
                 document,
                 tokens,
             });
         }
 
-        let lexical = lexical::LexicalIndex::build(&chunks);
+        let lexical = lexical::LexicalIndex::build(&indexed);
         Ok(Self {
-            chunks,
+            chunks: indexed,
             lexical,
-            dimension: store.embedding_dimension(),
+            dimension,
         })
     }
 
