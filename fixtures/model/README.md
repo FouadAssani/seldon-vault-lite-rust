@@ -10,6 +10,10 @@
 | `tiny_text/model.safetensors` | 47,500 bytes | `2daec622d6d3be44a339158678939f9b739a3b21c8be1dce8f6f7c38fb90caa6` |
 | `tiny_text/golden.json` | 9,665 bytes | `28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94` |
 | `image_golden.json` | 219,568 bytes | `f7aa04357c0b8a3393d83958f88901b3b6b29d77f2ef2499568a4fd8970a8482` |
+| `audio_golden.json` | 178,525 bytes | `5b97b0eeb9e827a931002c26bcb7edff6040d5961bee412efa64d68d2b22818c` |
+| `tiny_audio/config.json` | 1,872 bytes | `bd57288ab4960a85b68504653d2436f9b58ce927c4475dab1d312bc981f65f2f` |
+| `tiny_audio/model.safetensors` | 173,940 bytes | `aef254d868be3fac0f01f262a9ea257c83434c441af238700cbde9750f95b912` |
+| `tiny_audio/golden.json` | 96,682 bytes | `7ab801b1fcbf29359fbade35a32426bd26e4550e32b4885c3f400627529b58c0` |
 
 The manifest's own SHA-256 is updated whenever the manifest changes; it is
 reported by `shasum -a 256 fixtures/model/manifest.json` and is not copied
@@ -107,6 +111,63 @@ relative tolerance and the final embedding by cosine and absolute tolerance.
 The fixture is model-dependent and is not a substitute for the text goldens.
 The full seven-case run is an ignored test because the scalar vision tower is
 expensive; the default test covers quadrants_16x16.
+
+## Audio golden fixture
+
+audio_golden.json was generated outside the product on 2026-11-11 with
+Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32, using
+scripts/generate_audio_goldens.py. It covers the six 16 kHz mono clips in
+fixtures/media/audio/: silence, a short tone, a long tone, French speech, a
+music chord progression, and rain-like noise.
+
+Each case records:
+
+- the source path, source sample rate, channel count, and sample count;
+- the mel-frame count, valid-frame count, and audio soft-token count;
+- the full audio-only input token ids;
+- the SHA-256 and first values of the full log-mel feature tensor;
+- the SHA-256 and first values of the SSCP output over valid tokens;
+- the SHA-256 and first values of every one of the 12 encoder layer outputs
+  over valid tokens;
+- the SHA-256 and first values of the projected audio soft tokens;
+- the final normalized 768-dimensional audio embedding and its SHA-256.
+
+The audio-only prompt is <bos><|audio><|audio|>*soft_tokens<audio|><eos>.
+The official model computes PLE from the final inputs_embeds including the
+audio features, mean-pools every token, applies the 512 to 768 projection, and
+L2-normalizes. The Rust test compares the SSCP, layer, and projected probes with
+absolute plus relative tolerance and the final embedding by cosine and absolute
+tolerance.
+
+The fixture is model-dependent and is not a substitute for the text or image
+goldens. The full six-case run and the text-to-audio ranking test are ignored
+because they load the frozen model and embed several clips; the default test
+covers short_tone_100ms. The audio preprocessing golden is separate in
+fixtures/media/audio_preprocess_golden.json.
+
+## Tiny official audio model
+
+`tiny_audio/` is a complete small composite model generated with the official
+code and committed because it is 173,940 bytes, not model-scale data:
+
+- `config.json` combines the committed tiny text configuration with a
+  two-layer Gemma 4 audio configuration: hidden 16, two heads of dimension 8,
+  subsampling channels [128, 8], chunk size 2, left context 3, right context 0,
+  output projection 16, residual weight 0.5, finite clipping bounds, and SiLU.
+- `model.safetensors` contains the committed tiny text weights plus a
+  deterministic random audio tower and the audio-to-text projection.
+- `golden.json` records a deterministic 0.125 s 440 Hz sine waveform, the
+  official 12-frame log-mel features and mask, the SSCP output, both encoder
+  layer outputs over three valid soft tokens, the projected audio features, and
+  the final normalized 8-dimensional embedding.
+
+The fixture exercises the audio configuration parser, the weight loader
+(including finite clipping bounds), two SSCP convolution/LayerNorm/ReLU blocks,
+sinusoidal relative positions, chunked attention, light convolution, both
+feed-forward branches, the output projection, and the text connection with PLE.
+The Rust test compares the mel features, SSCP, both layers, projected features,
+and final embedding with absolute/relative tolerances. It runs without the
+frozen model cache.
 
 ## Model files
 

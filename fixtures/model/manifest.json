@@ -254,6 +254,20 @@
       "schema_version": 1,
       "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, official vision tower and text encoder"
     },
+    "audio_preprocess_golden": {
+      "path": "fixtures/media/audio_preprocess_golden.json",
+      "sha256": "2157a17558d5599c87ba75225a61b4c0c9977f90c7dcef5b7dc3ca24f7be5600",
+      "size": 4180,
+      "schema_version": 1,
+      "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, official Gemma4AudioFeatureExtractor"
+    },
+    "audio_golden": {
+      "path": "fixtures/model/audio_golden.json",
+      "sha256": "5b97b0eeb9e827a931002c26bcb7edff6040d5961bee412efa64d68d2b22818c",
+      "size": 178525,
+      "schema_version": 1,
+      "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, official audio tower and text encoder"
+    },
     "tiny_text": {
       "directory": "fixtures/model/tiny_text",
       "config": {
@@ -271,6 +285,24 @@
         "sha256": "28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94",
         "size": 9665
       }
+    },
+    "tiny_audio": {
+      "directory": "fixtures/model/tiny_audio",
+      "config": {
+        "path": "fixtures/model/tiny_audio/config.json",
+        "sha256": "bd57288ab4960a85b68504653d2436f9b58ce927c4475dab1d312bc981f65f2f",
+        "size": 1872
+      },
+      "weights": {
+        "path": "fixtures/model/tiny_audio/model.safetensors",
+        "sha256": "aef254d868be3fac0f01f262a9ea257c83434c441af238700cbde9750f95b912",
+        "size": 173940
+      },
+      "golden": {
+        "path": "fixtures/model/tiny_audio/golden.json",
+        "sha256": "7ab801b1fcbf29359fbade35a32426bd26e4550e32b4885c3f400627529b58c0",
+        "size": 96682
+      }
     }
   },
   "notes": [
@@ -280,8 +312,10 @@
     "mini_tokenizer.json is a reduced fixture that reproduces the full tokenizer on the golden corpus; it is not a general tokenizer.",
     "M2 text fixtures were generated with Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32.",
     "The tiny_text fixture is a complete 3-layer official-code model with 10,315 parameters; it is not a reduced real checkpoint.",
-    "M4 adds official image preprocessing, the vision tower, and image-only embeddings; image storage and cross-modal search are not implemented.",
+    "M4 adds official image preprocessing, the vision tower, image-only embeddings, image storage, and text/image cross-modal search.",
     "Image fixtures were generated with Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32; torchvision was not installed, so the processor tensor operations were reproduced directly.",
-    "Text embeddings and image embeddings are implemented; video and audio are not implemented."
+    "M5 adds native WAV decoding, mono conversion and resampling, official log-mel preprocessing, the audio tower, audio-only embeddings, audio storage, and text/audio cross-modal search.",
+    "Audio fixtures were generated with Transformers 5.22.2, PyTorch 2.15.0 CPU, and NumPy 2.5.4 in float32; the French speech clip used the macOS say voice and afconvert.",
+    "Text, image, and audio embeddings are implemented; video, MP3, and streaming audio are not implemented."
   ]
 }

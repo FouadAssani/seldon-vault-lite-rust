@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full verification for milestone M4 (image path).
+# Full verification for milestone M5 (audio path).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
@@ -20,6 +20,10 @@ if [ -f ".model-cache/$REV/model.safetensors" ]; then
     cargo test --release --test cli indexes_an_image -- --ignored --nocapture
     cargo test --release --test cli text_and_image_queries_rank_image_documents -- --ignored --nocapture
     cargo test --release --test image_embeddings rotation_and_aspect_vision_parity -- --ignored --nocapture
+    cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture
+    cargo test --release --test audio_embeddings all_audio_embeddings_match_the_official_reference -- --ignored --nocapture
+    cargo test --release --test audio_embeddings text_queries_rank_the_expected_audio_clip_first -- --ignored --nocapture
+    cargo test --release --test cli audio_documents_can_be_indexed_and_found_by_text_or_audio -- --ignored --nocapture
 else
     echo "skipping: .model-cache/$REV/model.safetensors is not present"
 fi
@@ -43,4 +47,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M4 verification passed (image path)."
+echo "M5 verification passed (audio path)."

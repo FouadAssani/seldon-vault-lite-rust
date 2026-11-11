@@ -119,9 +119,9 @@ impl fmt::Display for ChunkId {
 pub enum Modality {
     /// Text or code content.
     Text,
-    /// Image content, reserved for milestone M4.
+    /// Image content.
     Image,
-    /// Audio content, reserved for milestone M5.
+    /// Audio content.
     Audio,
 }
 

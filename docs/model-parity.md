@@ -14,8 +14,15 @@ are implemented and verified against the official reference. Image-only
 embeddings are produced in the shared 768-dimensional space. Text-to-image and
 image-to-image ranking are validated on a two-image reference corpus, and image
 documents are stored, indexed, and searched through the CLI. Broader ranking
-quality remains future work. The audio encoder remains unimplemented and is
-not claimed.
+quality remains future work.
+
+At milestone M5, the native WAV decoder, the official Gemma 4 audio log-mel
+preprocessing, and the Gemma 4 audio tower are implemented and verified against
+the official reference. Audio-only embeddings are produced in the same
+768-dimensional space as text and images. Text-to-audio and audio-to-audio
+ranking are validated on a six-clip reference corpus, and audio documents are
+stored, indexed, and searched through the CLI. MP3, streaming audio, and broader
+audio ranking quality remain future work and are not claimed.
 
 ## Principle
 
@@ -95,7 +102,36 @@ M4 also adds two reference fixtures:
   rotation and a non-square aspect ratio.
 
 The image fixtures are generated outside the product with Transformers 5.22.2
-and PyTorch 2.15.0 CPU in float32. Audio fixtures remain M5 work.
+and PyTorch 2.15.0 CPU in float32.
+
+M5 adds:
+
+- fixtures/media/audio/ contains six short WAV excerpts: silence, a short tone,
+  a long tone, French speech, a music chord progression, and rain-like noise.
+  The synthetic clips were generated with deterministic Python code; the French
+  speech was generated with the macOS `say` French voice and converted to
+  16 kHz mono PCM. The exact generation commands are recorded in
+  fixtures/media/README.md.
+- fixtures/media/audio_preprocess_golden.json records the official mel-frame
+  count, valid-frame count, padded sample count, feature fingerprint, and first
+  feature values for every clip;
+- fixtures/model/audio_golden.json records the audio token layout, SSCP output
+  probe, all 12 encoder layer probes, the projected audio features, and the
+  final normalized audio embedding for every clip.
+- fixtures/model/tiny_audio/ is a complete small composite model generated with
+  the official code: the committed tiny text weights plus a deterministic
+  two-layer audio tower with hidden 16, two heads of dimension 8, subsampling
+  channels [128, 8], chunk size 2, left context 3, and output projection 16.
+  Its golden records a deterministic 12-frame sine input, the official log-mel
+  features and mask, the SSCP output, both layer outputs, the projected audio
+  features, and the final normalized 8-dimensional embedding. The Rust test
+  runs without the frozen model cache and covers the audio configuration,
+  weight loader, SSCP, chunked attention, light convolution, feed-forward
+  branches, projection, and text connection.
+
+The audio fixtures are generated outside the product with Transformers 5.22.2
+and PyTorch 2.15.0 CPU in float32. The laboratory generator is
+scripts/generate_audio_goldens.py; it is never run by the product.
 
 ## Tokenization parity
 
@@ -185,6 +221,69 @@ mathematically equivalent. The image layer probe stores the patch embedder
 output and all 16 encoder layer outputs for the first real patch; the full
 tensor fingerprints remain in the fixture for manual inspection.
 
+## Audio preprocessing parity
+
+The M5 audio pipeline reproduces the official Gemma4AudioFeatureExtractor:
+
+- 16 kHz mono input;
+- 320-sample frames (20 ms) and a 160-sample hop (10 ms);
+- periodic Hann window `0.5 - 0.5 cos(2πn/320)`;
+- 160 zeros of semicausal left padding; the 321-sample analysis window drops
+  its last sample in the no-preemphasis branch;
+- 512-point real FFT, 257 magnitude bins;
+- 128 HTK mel filters from 0 Hz to 8000 Hz, no area normalization, floor
+  0.001, natural logarithm;
+- right-padding to a multiple of 128 samples;
+- a frame mask that marks only frames whose complete analysis window contains
+  real audio; invalid frames are exactly zero.
+
+The committed preprocessing goldens compare the padded sample count, mel-frame
+count, valid-frame count, and first feature values. The FFT and mel projection
+use f64 accumulation and round to f32 once. The path is not claimed bit-exact
+because a different radix-2 FFT can differ in the last f32 bit; the observed
+maximum absolute difference on the short reference clip is `4.77e-7` and the
+mean absolute difference is `1.65e-8`.
+
+## Audio architecture parity
+
+The M5 audio tower reproduces the frozen gemma4_audio configuration:
+
+- two 3x3 convolution layers with stride 2, padding 1, no bias, channel
+  LayerNorm with a learned weight and no bias, and ReLU; the time mask is
+  strided by two after each layer;
+- flattening in [time, frequency, channel] order and a linear projection to
+  hidden 1024;
+- sinusoidal relative positions `[sin..., cos...]` for positions
+  `context_size/2 ... 0`, projected by a per-layer `relative_k_proj`;
+- 12 chunked-local-attention layers: blocks of 12 queries, left context 13,
+  right context 0, distances 0..11, per-head scores
+  `q·k + q·relative_key`, query scale `1/sqrt(head_dim)/ln 2` times
+  `softplus(per_dim_scale)`, key scale `ln(1+e)/ln 2`, logit soft cap
+  `tanh(score/50)*50`, and per-head softmax;
+- clipped linear layers with the frozen input/output bounds;
+- a causal depthwise light convolution (kernel 5) with RMSNorm, GLU, RMSNorm,
+  SiLU, and a clipped linear, plus a residual;
+- two feed-forward branches with RMSNorm, clipped linear to 4h, SiLU, clipped
+  linear to h, RMSNorm, residual weight 0.5, and a residual;
+- layer order: feed_forward1, pre-attention norm, attention, post-attention
+  norm plus residual, light convolution, feed_forward2, output norm;
+- a 1024 to 1536 output projection with bias, an unscaled RMSNorm, and a
+  1536 to 512 projection;
+- the audio-only prompt <bos><|audio><|audio|>*soft<audio|><eos>, PLE from the
+  final inputs_embeds including audio features, mean pooling over every token,
+  the 512 to 768 projection, L2 normalization, and Matryoshka truncation.
+
+Padding queries are skipped; the tower is causal along time, so trailing
+padding cannot influence a valid query. The audio layer probe stores the SSCP
+output and all 12 encoder layer outputs over valid soft tokens; the full tensor
+fingerprints remain in the fixture for manual inspection.
+
+The committed audio golden covers silence, a short tone, a long tone, French
+speech, a music chord progression, and rain-like noise. The tiny audio fixture test
+runs by default without the frozen model cache; the short-tone parity test runs
+when the cache is present; the full six-case test and the text-to-audio ranking
+test are ignored because they load the frozen model and embed several clips.
+
 ## Mandatory coverage
 
 Golden tests cover at least:
@@ -212,8 +311,21 @@ Both queries return modality image. The ignored rotation/aspect vision test
 reproduces the official probes and final embeddings for a 90-degree rotation
 and a 2:1 aspect-ratio image. Broader text-to-image and image-to-image ranking
 quality on a larger corpus remains future work; M4 is complete for the
-committed reference corpus. WAV audio embeddings remain mandatory at M5 and are
-not claimed.
+committed reference corpus.
+
+M5 adds WAV decoder coverage for PCM 8/16/24/32, IEEE float 32, stereo downmix,
+malformed and truncated headers, unsupported codecs, non-finite samples, and
+resampling behavior. Audio preprocessing coverage exists for six clips: silence,
+a short tone, a long tone, French speech, music, and rain-like noise. Audio
+embedding coverage exists for the same six clips, with all 12 layer probes and
+the final normalized embedding. The ignored six-case parity test reproduces the
+official outputs. The ignored text-to-audio ranking test embeds the six clips
+and three text queries; the expected top hits are rain-like noise for "rain
+falling" (cosine 0.7056), the music chord progression for "music" (0.7181), and
+French speech for "a test of audio search" (0.7707). An ignored CLI test indexes
+three audio documents, finds the rain clip with a text query, and finds the
+music clip with an audio query. Broader audio ranking quality, MP3, and
+streaming audio remain future work.
 
 ## Tolerances
 
@@ -224,6 +336,9 @@ not claimed.
 | Preprocessing tensors | SHA-256 equality | exact bytes |
 | Vision layer probes | absolute + relative | atol <= 5e-5, rtol <= 5e-4 |
 | Image embeddings | cosine + absolute | cos >= 0.99999, atol <= 1e-4 after L2 normalization |
+| Audio mel features | absolute (first values) | atol <= 1e-5 |
+| Audio SSCP/layer/feature probes | absolute + relative | atol <= 2e-4, rtol <= 2e-4 |
+| Audio embeddings | cosine + absolute | cos >= 0.999, atol <= 2e-3 after L2 normalization |
 | Intermediate FP32 tensors | absolute + relative | `atol <= 2e-5`, `rtol <= 1e-4` |
 | Projected FP32 states | absolute + relative | `atol <= 2e-4`, `rtol <= 1e-4` |
 | Final FP32 embeddings | cosine + absolute | `cos >= 0.9999`, `atol <= 1e-4` after L2 normalization |
@@ -247,6 +362,15 @@ divergence on the frozen probe is about `1.2e-4` on one component; the final
 normalized embedding remains within `1e-4` and above `0.9999` cosine for every
 case. The wider bound applies only to the unnormalized diagnostic state, never
 to the product embedding.
+
+The audio tolerances are wider than the text tolerances because the tower has
+two convolution stages, 12 layers of chunked attention, and a 1536-dimensional
+projection. The short-tone parity test compares SSCP, every layer probe, and the
+projected features at `2e-4` absolute and relative, and the final embedding at
+cosine `0.999` and maximum absolute difference `2e-3`. The full six-case test
+passes with those bounds in the test profile. The mel feature check uses the
+first values with `1e-5` absolute tolerance because the product's radix-2 FFT
+is not bit-identical to NumPy's pocketfft.
 
 ## Blocking rule
 

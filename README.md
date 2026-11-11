@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M4 complete on branch feat/m4-vision-encoder — native image decoding, preprocessing, vision embeddings, and multimodal image search.**
+**Status: milestone M5 implemented on branch feat/m5-audio-embeddings — native WAV decoding, official audio preprocessing, audio embeddings, and multimodal text/audio search.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -19,10 +19,18 @@ vision soft tokens to the text encoder. Image-only embeddings are validated
 against the official reference for grayscale, RGB, RGBA, gradient, quadrant,
 rotation, and non-square aspect-ratio fixtures. The CLI embeds images, indexes
 image documents, and runs text-to-image and image-to-image vector search; both
-ranking paths are covered by reference tests. The scalar vision tower is a
-correctness baseline, not an optimized result; broader ranking quality and
-performance remain future work. Audio remains pending (M5). HNSW remains
-deferred until measurements justify it.
+ranking paths are covered by reference tests. M5 adds a native RIFF/WAVE decoder
+for PCM 8/16/24/32 and IEEE float 32/64, mono downmix, deterministic
+windowed-sinc resampling to 16 kHz, the official 128-bin log-mel preprocessing,
+and the 12-layer Gemma 4 audio tower with sinusoidal relative positions,
+chunked local attention, clipped linears, and light convolution. Audio-only
+embeddings are validated against official goldens for silence, short and long
+tones, French speech, music, and rain-like noise. The CLI embeds audio, indexes
+audio documents, and runs text-to-audio and audio-to-audio vector search; both
+ranking paths are covered by reference tests. The scalar vision and audio
+towers are correctness baselines, not optimized results; broader ranking quality
+and performance remain future work. MP3, streaming audio, and HNSW remain future
+work.
 
 ## Requirements
 
@@ -50,6 +58,11 @@ scalar path):
 
     cargo run --release -- embed --image fixtures/media/quadrants_16x16.png --dim 768
 
+Audio embedding with the frozen model cache (WAV; the clip is converted to
+16 kHz mono and capped at 30 seconds):
+
+    cargo run --release -- embed --audio fixtures/media/audio/short_tone_100ms.wav --dim 768
+
 Token ids without the tokenizer, useful for diagnostics:
 
     cargo run -- embed --model-dir fixtures/model/tiny_text --ids 1,5,7,9,2 --dim 8
@@ -71,6 +84,17 @@ Image lines have no BM25 text; they are retrieved by exact vector search. The
 vision budget is one of 70, 140, 280, 560, or 1120; 70 keeps the scalar path
 practical.
 
+Index an audio document and search it with text or another audio clip:
+
+    echo '{"id":"rain-1","audio":"fixtures/media/audio/rain_noise_2s.wav","title":"Rain"}' > audio.jsonl
+    cargo run --release -- index --data-dir ./data audio.jsonl
+    cargo run --release -- search --data-dir ./data --mode vector "rain falling"
+    cargo run --release -- search --data-dir ./data --mode vector --audio fixtures/media/audio/music_chords_2s.wav
+
+Audio lines have no BM25 text; they are retrieved by exact vector search. The
+30-second cap is enforced by the native decoder and preprocessing path; no
+transcription is performed.
+
 For reproducible tests without the full tokenizer, index and vector search
 accept a diagnostic --ids path against the tiny official model:
 
@@ -88,6 +112,17 @@ expensive because the scalar vision tower processes 576 patches; run it with:
 The full seven-case image corpus is an ignored test:
 
     cargo test --release --test image_embeddings -- --ignored --nocapture
+
+The tiny audio fixture test runs by default without the frozen model cache and
+covers the audio tower, projection, and text connection. Audio preprocessing,
+WAV decoding, and the short-tone audio embedding parity test run when the model
+cache is present. The full six-case audio parity and text-to-audio ranking
+tests are ignored because they load the frozen model and embed several clips:
+
+    cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture
+    cargo test --release --test audio_embeddings all_audio_embeddings_match_the_official_reference -- --ignored --nocapture
+    cargo test --release --test audio_embeddings text_queries_rank_the_expected_audio_clip_first -- --ignored --nocapture
+    cargo test --release --test cli audio_documents_can_be_indexed_and_found_by_text_or_audio -- --ignored --nocapture
 
 ## What the current milestones provide
 
@@ -113,7 +148,7 @@ The full seven-case image corpus is an ignored test:
 | BM25 lexical index with filters | implemented |
 | Exact cosine vector search (correctness oracle) | implemented |
 | Hybrid RRF fusion and pagination | implemented |
-| CLI embed (text, token ids, and images), index (text and images), search, verify, compact, version, help | implemented |
+| CLI embed (text, token ids, images, and audio), index (text, image, and audio), search, verify, compact, version, help | implemented |
 | Native zlib/DEFLATE decoder (stored, fixed, dynamic) | implemented |
 | Strict PNG decoder for 8-bit gray/RGB/RGBA, non-interlaced | implemented |
 | PNG dimension, pixel, chunk, and decompression caps | implemented |
@@ -128,10 +163,18 @@ The full seven-case image corpus is an ignored test:
 | Image storage and CLI image indexing | implemented |
 | Vision parity for rotation and aspect-ratio fixtures | implemented |
 | Text-to-image and image-to-image ranking smoke tests (two images) | implemented |
-| Broader ranking quality and vision performance | future work (M7) |
+| Native RIFF/WAVE decoder for PCM 8/16/24/32 and IEEE float 32/64 | implemented |
+| WAV file, data, channel, rate, and frame caps; codec rejection | implemented |
+| Mono downmix and deterministic windowed-sinc resampling to 16 kHz | implemented |
+| Official 128-bin log-mel preprocessing and frame mask | implemented |
+| Audio tower, sinusoidal relative positions, chunked local attention, light convolution | implemented |
+| Audio-only embeddings in the shared 768-dimensional space | implemented |
+| Audio storage and CLI audio indexing | implemented |
+| Text-to-audio and audio-to-audio ranking smoke tests (six clips) | implemented |
+| Broader ranking quality, vision performance, and audio performance | future work (M7) |
+| MP3 and streaming audio | future work |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
-| Audio embeddings | pending (M5) |
 
 ## Documentation
 
@@ -146,7 +189,8 @@ The full seven-case image corpus is an ignored test:
 - [ADR 0007 — Native PNG and DEFLATE decoding](docs/adr/0007-native-png-and-deflate-decoding.md)
 - [ADR 0008 — Native baseline JPEG decoding](docs/adr/0008-native-jpeg-decoding.md)
 - [ADR 0009 — Image preprocessing and vision tower](docs/adr/0009-image-preprocessing-and-vision.md)
-- [Architecture (M4 state)](docs/architecture.md)
+- [ADR 0010 — Native WAV and audio embeddings](docs/adr/0010-native-wav-and-audio-embeddings.md)
+- [Architecture (M5 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
 - [Tokenizer and prompts](docs/tokenizer.md)

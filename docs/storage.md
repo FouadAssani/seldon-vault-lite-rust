@@ -231,9 +231,9 @@ The public store surface is:
 ReadOnlyStore exposes the same read accessors without mutation methods. It is a
 point-in-time view: later writer appends are not visible until it is reopened.
 
-A store rejects duplicate document ids, audio modalities, empty chunk lists,
-dimension changes, oversized payloads, and exhausted count caps before writing.
-Text and image documents are accepted. An image document normally carries an
+A store rejects duplicate document ids, empty chunk lists, dimension changes,
+oversized payloads, and exhausted count caps before writing. Text, image, and
+audio documents are accepted. An image or audio document normally carries an
 empty chunk text: it participates in exact vector search and modality filters,
 but not in BM25. A failed validation leaves the journal and in-memory state
 unchanged.

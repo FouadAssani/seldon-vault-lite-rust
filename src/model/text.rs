@@ -139,13 +139,13 @@ impl TextModel {
         self.forward_impl(input_ids, None, capture_hidden)
     }
 
-    /// Runs one forward pass with vision soft tokens replacing a token range.
+    /// Runs one forward pass with multimodal soft tokens replacing a token range.
     ///
-    /// The caller supplies token ids whose selected positions are image
-    /// placeholders. The hidden state at those positions is built from the
-    /// padding token embedding, then overwritten with the projected vision
-    /// features before per-layer embeddings are computed, matching the
-    /// official multimodal flow.
+    /// The caller supplies token ids whose selected positions are image or
+    /// audio placeholders. The hidden state at those positions is built from the
+    /// padding token embedding, then overwritten with the projected soft-token
+    /// features before per-layer embeddings are computed, matching the official
+    /// multimodal flow.
     ///
     /// # Errors
     ///
@@ -214,31 +214,29 @@ impl TextModel {
         if let Some((features, start, count)) = features {
             if count == 0 {
                 return Err(Error::corrupt(
-                    "vision feature replacement requires at least one token",
+                    "multimodal feature replacement requires at least one token",
                 ));
             }
             let end = start
                 .checked_add(count)
-                .ok_or_else(|| Error::limit_exceeded("vision feature range overflow"))?;
+                .ok_or_else(|| Error::limit_exceeded("multimodal feature range overflow"))?;
             if end > sequence {
                 return Err(Error::corrupt(format!(
-                    "vision feature range {start}..{end} is outside the {sequence}-token sequence"
+                    "multimodal feature range {start}..{end} is outside the {sequence}-token sequence"
                 )));
             }
             let expected = count
                 .checked_mul(hidden_size)
-                .ok_or_else(|| Error::limit_exceeded("vision feature length overflow"))?;
+                .ok_or_else(|| Error::limit_exceeded("multimodal feature length overflow"))?;
             if features.len() != expected {
                 return Err(Error::corrupt(format!(
-                    "vision features have {} values, expected {expected}",
+                    "multimodal features have {} values, expected {expected}",
                     features.len()
                 )));
             }
-            let pad = self
-                .config
-                .pad_token_id()
-                .ok_or_else(|| Error::unsupported("model has no padding token for images"))?
-                as usize;
+            let pad = self.config.pad_token_id().ok_or_else(|| {
+                Error::unsupported("model has no padding token for multimodal inputs")
+            })? as usize;
             if pad >= self.config.vocab_size() {
                 return Err(Error::corrupt(format!(
                     "padding token id {pad} is outside the vocabulary"
@@ -259,7 +257,7 @@ impl TextModel {
             }
             if hidden.iter().any(|value| !value.is_finite()) {
                 return Err(Error::internal(
-                    "vision features contain a non-finite activation",
+                    "multimodal features contain a non-finite activation",
                 ));
             }
         }

@@ -19,6 +19,12 @@ const TEXT_GOLDEN: &str = include_str!("../fixtures/model/text_golden.json");
 const TINY_CONFIG: &str = include_str!("../fixtures/model/tiny_text/config.json");
 const TINY_WEIGHTS: &[u8] = include_bytes!("../fixtures/model/tiny_text/model.safetensors");
 const TINY_GOLDEN: &str = include_str!("../fixtures/model/tiny_text/golden.json");
+const AUDIO_PREPROCESS_GOLDEN: &str =
+    include_str!("../fixtures/media/audio_preprocess_golden.json");
+const AUDIO_GOLDEN: &str = include_str!("../fixtures/model/audio_golden.json");
+const TINY_AUDIO_CONFIG: &str = include_str!("../fixtures/model/tiny_audio/config.json");
+const TINY_AUDIO_WEIGHTS: &[u8] = include_bytes!("../fixtures/model/tiny_audio/model.safetensors");
+const TINY_AUDIO_GOLDEN: &str = include_str!("../fixtures/model/tiny_audio/golden.json");
 const REVISION: &str = "f9972ac22e696a105c482202646979e33e4b5a1e";
 
 fn ids(value: &Value) -> Vec<u32> {
@@ -173,6 +179,44 @@ fn manifest_records_the_frozen_model_and_fixtures() {
             "sha256"
         ),
         sha256_hex(TEXT_GOLDEN.as_bytes())
+    );
+    assert_eq!(
+        string(
+            fixtures
+                .get("audio_preprocess_golden")
+                .expect("audio preprocessing golden fixture"),
+            "sha256"
+        ),
+        sha256_hex(AUDIO_PREPROCESS_GOLDEN.as_bytes())
+    );
+    assert_eq!(
+        string(
+            fixtures.get("audio_golden").expect("audio golden fixture"),
+            "sha256"
+        ),
+        sha256_hex(AUDIO_GOLDEN.as_bytes())
+    );
+    let tiny_audio = fixtures.get("tiny_audio").expect("tiny audio fixture");
+    assert_eq!(
+        string(
+            tiny_audio.get("config").expect("tiny audio config"),
+            "sha256"
+        ),
+        sha256_hex(TINY_AUDIO_CONFIG.as_bytes())
+    );
+    assert_eq!(
+        string(
+            tiny_audio.get("weights").expect("tiny audio weights"),
+            "sha256"
+        ),
+        sha256_hex(TINY_AUDIO_WEIGHTS)
+    );
+    assert_eq!(
+        string(
+            tiny_audio.get("golden").expect("tiny audio golden"),
+            "sha256"
+        ),
+        sha256_hex(TINY_AUDIO_GOLDEN.as_bytes())
     );
     let tiny = fixtures.get("tiny_text").expect("tiny text fixture");
     assert_eq!(
