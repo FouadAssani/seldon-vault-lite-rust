@@ -3,7 +3,8 @@
 //! The crate exposes the CLI, the central error type, binary format readers,
 //! strict JSON, the FP32 tensor core, the frozen model tokenizer, the milestone
 //! M3 persistent store, the milestone M4/M5 native media decoders and
-//! multimodal encoders, and the milestone M6 HTTP API and bounded job queue.
+//! multimodal encoders, the milestone M6 HTTP API and bounded job queue, and
+//! the milestone M7 NEON execution path with its scalar fallback.
 //!
 //! Project contract: no third-party crate, only std and core::arch
 //! intrinsics.
@@ -12,6 +13,7 @@
 
 pub mod api;
 pub mod binary;
+pub mod bundle;
 pub mod cli;
 pub mod error;
 pub mod index;

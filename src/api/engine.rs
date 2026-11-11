@@ -1,8 +1,8 @@
 //! Model loading and embedding dispatch for the HTTP API.
 //!
-//! The text model is loaded once at startup, which gives the server an honest
-//! readiness signal and the model's embedding dimension before it accepts a
-//! request. The tokenizer is loaded only when `tokenizer.json` exists; the tiny
+//! The text model is loaded once at startup from a model directory or a
+//! `.svlm` bundle file, which gives the server an honest readiness signal and
+//! the model's embedding dimension before it accepts a request. The tokenizer is loaded only when `tokenizer.json` exists; the tiny
 //! diagnostic fixtures intentionally have no tokenizer and therefore support
 //! only the explicit token-id path.
 //!
@@ -16,14 +16,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
-use crate::json;
 use crate::media::preprocess::PreprocessOptions;
 use crate::media::{self, Audio};
 use crate::model::audio::AudioConfig;
-use crate::model::config::{MAX_CONFIG_BYTES, MAX_TEXT_TOKENS, TextConfig};
+use crate::model::config::{MAX_TEXT_TOKENS, TextConfig};
 use crate::model::prompt::{self, Prompt};
+use crate::model::source::{load_audio_embedder, load_image_embedder, load_text_model_files};
 use crate::model::text::TextModel;
 use crate::model::tokenizer::Tokenizer;
 use crate::model::vision::VisionConfig;
@@ -68,10 +67,8 @@ impl Engine {
     /// missing or inconsistent weight tensor, an invalid tokenizer, or a
     /// declared media configuration that cannot be parsed.
     pub fn load(model_dir: &Path, vision_budget: usize) -> Result<Self> {
-        let config_bytes = read_file_bounded(&model_dir.join("config.json"), MAX_CONFIG_BYTES)?;
-        let config_text = std::str::from_utf8(&config_bytes)
-            .map_err(|_| Error::corrupt("config.json is not valid UTF-8"))?;
-        let config_value = json::parse(config_text)?;
+        let loaded = load_text_model_files(model_dir)?;
+        let config_value = loaded.config;
         let text_config = TextConfig::from_json_value(&config_value)?;
         let image_available = config_value.get("vision_config").is_some();
         if image_available {
@@ -83,7 +80,7 @@ impl Engine {
         }
         PreprocessOptions::new(vision_budget)?;
 
-        let model = TextModel::load(model_dir)?;
+        let model = loaded.model;
         let embedding_dimension = model.config().embedding_dim();
         if text_config.embedding_dim() != embedding_dimension {
             return Err(Error::corrupt(format!(
@@ -93,23 +90,16 @@ impl Engine {
             )));
         }
 
-        let tokenizer_path = model_dir.join("tokenizer.json");
-        let tokenizer = match std::fs::metadata(&tokenizer_path) {
-            Ok(metadata) if metadata.is_file() => {
-                let tokenizer = Tokenizer::load(&tokenizer_path)?;
-                if tokenizer.vocab_size() != model.config().vocab_size() {
-                    return Err(Error::corrupt(format!(
-                        "tokenizer vocabulary has {} entries, model declares {}",
-                        tokenizer.vocab_size(),
-                        model.config().vocab_size()
-                    )));
-                }
-                Some(tokenizer)
-            }
-            Ok(_) => None,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(Error::Io(error)),
-        };
+        let tokenizer = loaded.tokenizer;
+        if let Some(tokenizer) = tokenizer.as_ref()
+            && tokenizer.vocab_size() != model.config().vocab_size()
+        {
+            return Err(Error::corrupt(format!(
+                "tokenizer vocabulary has {} entries, model declares {}",
+                tokenizer.vocab_size(),
+                model.config().vocab_size()
+            )));
+        }
         let text_input_available = tokenizer.is_some();
         let matryoshka_dimensions = [768usize, 512, 256, 128]
             .into_iter()
@@ -319,7 +309,7 @@ impl Engine {
             .lock()
             .map_err(|_| Error::internal("image model lock is poisoned"))?;
         if guard.is_none() {
-            *guard = Some(ImageEmbedder::load(&self.model_dir)?);
+            *guard = Some(load_image_embedder(&self.model_dir)?);
         }
         guard
             .as_ref()
@@ -351,7 +341,7 @@ impl Engine {
             .lock()
             .map_err(|_| Error::internal("audio model lock is poisoned"))?;
         if guard.is_none() {
-            *guard = Some(AudioEmbedder::load(&self.model_dir)?);
+            *guard = Some(load_audio_embedder(&self.model_dir)?);
         }
         guard
             .as_ref()

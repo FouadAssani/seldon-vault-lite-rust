@@ -11,6 +11,12 @@ publish = false
 # Verification: cargo tree --edges normal,build,dev must show only the
 # root crate.
 
+[features]
+default = []
+# Embeds the model bundle at compile time. The build must set
+# SELDON_MODEL_BUNDLE to the absolute path of a verified .svlm file.
+embedded-model = []
+
 [profile.release]
 opt-level = 3
 lto = "thin"

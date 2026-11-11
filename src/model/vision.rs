@@ -17,10 +17,11 @@ use std::path::Path;
 
 use crate::binary::read_file_bounded;
 use crate::binary::safetensors::SafetensorsFile;
-use crate::binary::sha256::sha256_hex;
+use crate::binary::sha256::{hex_digest, sha256_hex};
 use crate::error::{Error, Result};
 use crate::json::{self, Limits, Number, Value};
 use crate::media::preprocess::{ImagePatches, PATCH_SIZE, PATCH_VALUES, POOLING_KERNEL_SIZE};
+use crate::model::source::ModelFiles;
 use crate::model::text::MAX_ACTIVATION_ELEMENTS;
 use crate::tensor::kernels;
 use crate::tensor::{Shape, Tensor};
@@ -498,9 +499,36 @@ impl VisionWeights {
         Self::from_bytes(&bytes, config, text_hidden)
     }
 
+    /// Loads the vision weights from a directory or bundle source.
+    pub fn from_files(
+        files: &ModelFiles<'_>,
+        config: &VisionConfig,
+        text_hidden: usize,
+    ) -> Result<Self> {
+        let bytes = files.read("model.safetensors", MAX_VISION_FILE_BYTES)?;
+        match files.section_sha256("model.safetensors") {
+            Some(digest) => {
+                Self::from_bytes_with_fingerprint(&bytes, config, text_hidden, hex_digest(&digest))
+            }
+            None => Self::from_bytes(&bytes, config, text_hidden),
+        }
+    }
+
     /// Loads the vision weights from an in-memory Safetensors file.
     pub fn from_bytes(bytes: &[u8], config: &VisionConfig, text_hidden: usize) -> Result<Self> {
         let fingerprint = sha256_hex(bytes);
+        Self::from_bytes_with_fingerprint(bytes, config, text_hidden, fingerprint)
+    }
+
+    /// Loads the vision weights with an already verified SHA-256 fingerprint.
+    ///
+    /// The caller must have verified that `fingerprint` belongs to `bytes`.
+    pub fn from_bytes_with_fingerprint(
+        bytes: &[u8],
+        config: &VisionConfig,
+        text_hidden: usize,
+        fingerprint: String,
+    ) -> Result<Self> {
         let file = SafetensorsFile::parse(bytes)?;
         Self::decode(&file, config, text_hidden, fingerprint)
     }

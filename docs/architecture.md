@@ -355,8 +355,13 @@ owned FP32 data capped at 2^30 elements. TensorView borrows without copying.
 src/tensor/kernels.rs is the deterministic scalar reference. M2 adds linear
 projection, per-row RMSNorm, mean pooling, truncation with renormalization,
 RoPE, and bidirectional grouped-query attention with an optional sliding
-window. SIMD will be compared against this path before any optimization is
-accepted.
+window. M7 adds src/tensor/neon.rs: runtime-selected NEON kernels for dot
+products, elementwise operations, matmul, linear projections, RMSNorm, L2
+normalization, mean pooling, and attention scores. Every NEON wrapper checks
+`is_aarch64_feature_detected!("neon")`, falls back to the scalar path when the
+feature is unavailable, and is covered by scalar-vs-NEON differential tests
+including tail lengths and real model shapes. The scalar path remains the
+correctness oracle.
 
 ### Storage and journal
 
@@ -734,7 +739,19 @@ a dependency or if minos is not 11.0.
    bounded connections, asynchronous ingestion jobs with cooperative
    cancellation, observability counters, and loopback graceful shutdown.
    HNSW, TLS, keep-alive, and MP3 remain future work.
-5. **M7**: NEON and macOS packaging.
+5. **M7**: implemented on branch feat/m7-neon-simd-packaging. NEON kernels
+   with runtime dispatch, scalar fallback, differential tests, and frozen-model
+   parity replay are implemented. The versioned model container in
+   `src/bundle` and the Rust std packer in `tools/model-packer` are implemented
+   and a real frozen bundle is verified. The text, image, and audio loaders use
+   `src/model/source.rs` to accept a model directory or a `.svlm` bundle file;
+   the bundle path verifies the header CRC-32, catalog digest, and section
+   SHA-256 and produces identical embeddings. A compile-time `embedded-model`
+   feature embeds the bundle with `include_bytes!`. The full 1.5 GB embedded
+   build is verified: a 1.4 GiB Mach-O linking only libSystem, `minos 11.0`,
+   byte-identical text/image/audio vectors, 18.68 s cold and 6.75 s warm
+   startup, and about 2.44 GiB maximum RSS. The binary is ad-hoc linker-signed;
+   local execution works, while notarized distribution remains an M8 concern.
 6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and

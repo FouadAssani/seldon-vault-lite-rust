@@ -14,6 +14,7 @@ use std::path::Path;
 use crate::binary::read_file_bounded;
 use crate::error::{Error, Result};
 use crate::json::{self, Limits, Number, Object, Value};
+use crate::model::source::ModelFiles;
 
 /// Maximum size of a configuration file.
 pub const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
@@ -273,6 +274,12 @@ impl TextConfig {
         let text = std::str::from_utf8(&bytes)
             .map_err(|_| Error::corrupt(format!("{} is not valid UTF-8", path.display())))?;
         Self::from_json_str(text)
+    }
+
+    /// Loads config.json from a directory or bundle source.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let text = files.read_utf8("config.json", MAX_CONFIG_BYTES)?;
+        Self::from_json_str(&text)
     }
 
     /// Vocabulary size.

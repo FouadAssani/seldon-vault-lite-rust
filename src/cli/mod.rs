@@ -29,8 +29,9 @@ use crate::json::{self, Number, Object, Value};
 use crate::media::preprocess::PreprocessOptions;
 use crate::media::{Audio, Image, jpeg, png, wav};
 use crate::model::prompt::Prompt;
-use crate::model::text::{TextEmbedder, TextModel};
-use crate::model::{AudioEmbedder, ImageEmbedder};
+use crate::model::source::{
+    load_audio_embedder, load_image_embedder, load_text_embedder, load_text_model,
+};
 use crate::storage::model::{ChunkInput, Document, DocumentId, Metadata, Modality};
 use crate::storage::{ReadOnlyStore, Store};
 use crate::{MODEL_CACHE_DIR, MODEL_REVISION, PROGRAM_NAME, TARGET_TRIPLE, VERSION};
@@ -71,7 +72,7 @@ EMBED:
           [--text <TEXT> | --ids <ID,ID,...> | --image <PATH> | --audio <PATH>]
           [TEXT...]
 
-    --model-dir   Model directory (default: .model-cache/<revision>)
+    --model-dir   Model directory or .svlm bundle (default: .model-cache/<revision>)
     --prompt      SearchQuery, Document, Classification, Clustering,
                   CodeRetrieval, FactChecking, SentenceSimilarity, or
                   QuestionAnswering (default: SearchQuery)
@@ -96,7 +97,7 @@ INDEX:
           <FILE|->
 
     --data-dir    Data directory holding the journal and writer lock
-    --model-dir   Model directory (default: .model-cache/<revision>)
+    --model-dir   Model directory or .svlm bundle (default: .model-cache/<revision>)
     --dim         Embedding dimension (default: 768)
     --vision-tokens  Visual token budget for image documents: 70, 140, 280,
                   560, or 1120 (default: 280)
@@ -119,7 +120,7 @@ SEARCH:
            [--audio <PATH>] [QUERY...]
 
     --data-dir    Data directory holding the journal and writer lock
-    --model-dir   Model directory (default: .model-cache/<revision>)
+    --model-dir   Model directory or .svlm bundle (default: .model-cache/<revision>)
     --dim         Query embedding dimension (default: 768)
     --mode        hybrid (default), lexical (BM25 only), or vector
     --limit       Maximum hits, from 1 to 1000 (default: 10)
@@ -161,7 +162,7 @@ SERVE:
     --bind        Listen address (default: 127.0.0.1:8080). A non-loopback
                   bind requires --token of at least 16 bytes; without TLS the
                   service must never be exposed directly to the Internet.
-    --model-dir   Model directory (default: .model-cache/<revision>)
+    --model-dir   Model directory or .svlm bundle (default: .model-cache/<revision>)
     --dim         Default embedding dimension (default: 768)
     --vision-tokens  Default visual token budget for image requests
     --token       Bearer token required on every request when set
@@ -245,7 +246,7 @@ pub enum EmbedInput {
 pub struct IndexArgs {
     /// Data directory.
     pub data_dir: PathBuf,
-    /// Model directory.
+    /// Model directory or .svlm bundle file.
     pub model_dir: PathBuf,
     /// Embedding dimension.
     pub dimension: usize,
@@ -262,7 +263,7 @@ pub struct IndexArgs {
 pub struct SearchArgs {
     /// Data directory.
     pub data_dir: PathBuf,
-    /// Model directory, used by vector and hybrid modes.
+    /// Model directory or .svlm bundle file, used by vector and hybrid modes.
     pub model_dir: PathBuf,
     /// Query embedding dimension.
     pub dimension: usize,
@@ -316,7 +317,7 @@ pub struct ServeArgs {
     pub bind: SocketAddr,
     /// Data directory holding the journal and snapshots.
     pub data_dir: PathBuf,
-    /// Model directory.
+    /// Model directory or .svlm bundle file.
     pub model_dir: PathBuf,
     /// Default embedding dimension.
     pub dimension: usize,
@@ -974,20 +975,20 @@ pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
 fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
     match args.input {
         EmbedInput::Ids(ids) => {
-            let model = TextModel::load(&args.model_dir)?;
+            let model = load_text_model(&args.model_dir)?;
             validate_dimension(args.dimension, model.config().embedding_dim())?;
             let embedding = model.embed_ids(&ids, args.dimension)?;
             write_vector(&embedding, stdout)?;
         }
         EmbedInput::Text(text) => {
-            let embedder = TextEmbedder::load(&args.model_dir)?;
+            let embedder = load_text_embedder(&args.model_dir)?;
             validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
             let embedding = embedder.embed(&text, args.prompt, args.dimension)?;
             write_vector(&embedding, stdout)?;
         }
         EmbedInput::Image(path) => {
             let image = decode_image(&path)?;
-            let embedder = ImageEmbedder::load(&args.model_dir)?;
+            let embedder = load_image_embedder(&args.model_dir)?;
             validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
             let embedding = embedder.embed(
                 &image,
@@ -998,14 +999,14 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
         }
         EmbedInput::Audio(path) => {
             let audio = decode_audio(&path)?;
-            let embedder = AudioEmbedder::load(&args.model_dir)?;
+            let embedder = load_audio_embedder(&args.model_dir)?;
             validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
             let embedding = embedder.embed(&audio, args.dimension)?;
             write_vector(&embedding, stdout)?;
         }
         EmbedInput::Stdin => {
             let text = read_stdin_bounded(MAX_STDIN_BYTES)?;
-            let embedder = TextEmbedder::load(&args.model_dir)?;
+            let embedder = load_text_embedder(&args.model_dir)?;
             validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
             let embedding = embedder.embed(&text, args.prompt, args.dimension)?;
             write_vector(&embedding, stdout)?;
@@ -1047,7 +1048,7 @@ fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
     let mut chunks = 0usize;
 
     if args.ids_mode {
-        let model = TextModel::load(&args.model_dir)?;
+        let model = load_text_model(&args.model_dir)?;
         validate_dimension(args.dimension, model.config().embedding_dim())?;
         let mut store = Store::open(&args.data_dir)?;
         for pending in pending {
@@ -1071,12 +1072,12 @@ fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
         let has_image = pending.iter().any(|document| document.image.is_some());
         let has_audio = pending.iter().any(|document| document.audio.is_some());
         let image_embedder = if has_image {
-            Some(ImageEmbedder::load(&args.model_dir)?)
+            Some(load_image_embedder(&args.model_dir)?)
         } else {
             None
         };
         let audio_embedder = if has_audio {
-            Some(AudioEmbedder::load(&args.model_dir)?)
+            Some(load_audio_embedder(&args.model_dir)?)
         } else {
             None
         };
@@ -1122,7 +1123,7 @@ fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
         }
         write_index_summary(stdout, &args.data_dir, &store, ingested, chunks)?;
     } else {
-        let embedder = TextEmbedder::load(&args.model_dir)?;
+        let embedder = load_text_embedder(&args.model_dir)?;
         validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
         let mut store = Store::open(&args.data_dir)?;
         for pending in pending {
@@ -1187,7 +1188,7 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
             return Err(Error::usage("--image requires vector search mode"));
         }
         let image = decode_image(path)?;
-        let embedder = ImageEmbedder::load(&args.model_dir)?;
+        let embedder = load_image_embedder(&args.model_dir)?;
         validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
         let embedding = embedder.embed(
             &image,
@@ -1209,7 +1210,7 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
             return Err(Error::usage("--audio requires vector search mode"));
         }
         let audio = decode_audio(path)?;
-        let embedder = AudioEmbedder::load(&args.model_dir)?;
+        let embedder = load_audio_embedder(&args.model_dir)?;
         validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
         let embedding = embedder.embed(&audio, args.dimension)?;
         let store = ReadOnlyStore::open(&args.data_dir)?;
@@ -1239,11 +1240,11 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
     let embedding = if args.mode == SearchMode::Lexical {
         None
     } else if let Some(ids) = &args.ids {
-        let model = TextModel::load(&args.model_dir)?;
+        let model = load_text_model(&args.model_dir)?;
         validate_dimension(args.dimension, model.config().embedding_dim())?;
         Some(model.embed_ids(ids, args.dimension)?)
     } else {
-        let embedder = TextEmbedder::load(&args.model_dir)?;
+        let embedder = load_text_embedder(&args.model_dir)?;
         validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
         Some(embedder.embed(&query_text, Prompt::SearchQuery, args.dimension)?)
     };
@@ -2381,7 +2382,7 @@ mod tests {
     #[test]
     fn embed_ids_runs_the_tiny_model() {
         let model_dir = Path::new("fixtures/model/tiny_text");
-        let model = TextModel::load(model_dir).expect("tiny model must load");
+        let model = crate::model::text::TextModel::load(model_dir).expect("tiny model must load");
         let expected = model.embed_ids(&[1, 5, 7, 9, 2], 8).expect("embedding");
 
         let mut output = Vec::new();

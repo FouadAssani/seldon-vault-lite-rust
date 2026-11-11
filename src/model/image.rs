@@ -13,13 +13,14 @@
 
 use std::path::Path;
 
-use crate::binary::read_file_bounded;
+use crate::binary::sha256::hex_digest;
 use crate::error::{Error, Result};
 use crate::json;
 use crate::media::Image;
 use crate::media::preprocess::{PreprocessOptions, preprocess};
 use crate::model::config::{MAX_CONFIG_BYTES, MAX_TEXT_TOKENS, TextConfig};
 use crate::model::prompt::{self, Prompt};
+use crate::model::source::ModelFiles;
 use crate::model::text::{ForwardOutput, TextModel};
 use crate::model::tokenizer::Tokenizer;
 use crate::model::vision::{VisionConfig, VisionModel, VisionOutput, VisionWeights};
@@ -84,21 +85,48 @@ impl ImageEmbedder {
     /// The Safetensors file is read once and shared by the text and vision
     /// weight loaders. Both loaders validate their own tensor inventory.
     pub fn load(model_dir: &Path) -> Result<Self> {
-        let config_bytes = read_file_bounded(&model_dir.join("config.json"), MAX_CONFIG_BYTES)?;
-        let config_text = std::str::from_utf8(&config_bytes)
-            .map_err(|_| Error::corrupt("config.json is not valid UTF-8"))?;
-        let config_value = json::parse(config_text)?;
+        Self::from_files(&ModelFiles::directory(model_dir))
+    }
+
+    /// Loads the image embedder from a directory or bundle source.
+    ///
+    /// The Safetensors section is read once and shared by the text and vision
+    /// weight loaders. Both loaders validate their own tensor inventory.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error for a missing or invalid configuration, a missing
+    /// or inconsistent weight tensor, an oversized file, or a tokenizer whose
+    /// vocabulary does not match the model.
+    pub fn from_files(files: &ModelFiles<'_>) -> Result<Self> {
+        let config_text = files.read_utf8("config.json", MAX_CONFIG_BYTES)?;
+        let config_value = json::parse(&config_text)?;
         let text_config = TextConfig::from_json_value(&config_value)?;
         let vision_config = VisionConfig::from_json_value(&config_value)?;
 
-        let bytes = read_file_bounded(&model_dir.join("model.safetensors"), MAX_MODEL_FILE_BYTES)?;
-        let text_weights = TextWeights::from_bytes(&bytes, &text_config)?;
-        let vision_weights =
-            VisionWeights::from_bytes(&bytes, &vision_config, text_config.hidden_size())?;
+        let bytes = files.read("model.safetensors", MAX_MODEL_FILE_BYTES)?;
+        let fingerprint = files
+            .section_sha256("model.safetensors")
+            .map(|digest| hex_digest(&digest));
+        let text_weights = match &fingerprint {
+            Some(fingerprint) => {
+                TextWeights::from_bytes_with_fingerprint(&bytes, &text_config, fingerprint.clone())?
+            }
+            None => TextWeights::from_bytes(&bytes, &text_config)?,
+        };
+        let vision_weights = match &fingerprint {
+            Some(fingerprint) => VisionWeights::from_bytes_with_fingerprint(
+                &bytes,
+                &vision_config,
+                text_config.hidden_size(),
+                fingerprint.clone(),
+            )?,
+            None => VisionWeights::from_bytes(&bytes, &vision_config, text_config.hidden_size())?,
+        };
         let model = TextModel::new(text_config, text_weights)?;
         let vision = VisionModel::new(vision_config, vision_weights, model.config().hidden_size())?;
 
-        let tokenizer = Tokenizer::load(&model_dir.join("tokenizer.json"))?;
+        let tokenizer = Tokenizer::from_files(files)?;
         if tokenizer.vocab_size() != model.config().vocab_size() {
             return Err(Error::corrupt(format!(
                 "tokenizer vocabulary has {} entries, model declares {}",
