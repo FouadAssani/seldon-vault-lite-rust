@@ -67,8 +67,8 @@ The journal is a sequence of records in one file, journal.log. Each record is:
 
 The footer duplicates the sequence, length, and payload checksum and is
 written last. The checksum is CRC-32/ISO-HDLC, implemented in
-src/storage/checksum.rs; it detects torn writes and accidental corruption but
-is not a cryptographic authentication mechanism.
+src/binary/crc32.rs and shared with the PNG parser; it detects torn writes and
+accidental corruption but is not a cryptographic authentication mechanism.
 
 The footer is what makes recovery unambiguous:
 

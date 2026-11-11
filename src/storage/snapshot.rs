@@ -27,9 +27,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
+use crate::binary::crc32::crc32;
 use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
-use crate::storage::checksum::crc32;
 use crate::storage::journal::{self, Record};
 use crate::storage::model::MAX_EMBEDDING_DIMENSION;
 

@@ -8,7 +8,6 @@
 //!
 //! No external database or serialization crate is used.
 
-pub mod checksum;
 pub mod codec;
 pub mod journal;
 pub mod model;
