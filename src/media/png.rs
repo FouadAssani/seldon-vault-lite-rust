@@ -15,6 +15,7 @@ use crate::binary::crc32::Crc32;
 use crate::binary::reader::{ByteReader, Endian, read_file_bounded};
 use crate::error::{Error, Result};
 use crate::media::deflate::inflate_zlib;
+pub use crate::media::image::Image;
 
 /// PNG signature.
 pub const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -30,47 +31,6 @@ pub const MAX_PIXELS: usize = 16_777_216;
 pub const MAX_DECOMPRESSED_BYTES: usize = 64 * 1024 * 1024;
 /// Maximum size of one PNG chunk.
 const MAX_CHUNK_BYTES: usize = 32 * 1024 * 1024;
-
-/// Decoded PNG image with interleaved 8-bit channels.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Image {
-    width: usize,
-    height: usize,
-    channels: u8,
-    pixels: Vec<u8>,
-}
-
-impl Image {
-    /// Image width in pixels.
-    pub fn width(&self) -> usize {
-        self.width
-    }
-
-    /// Image height in pixels.
-    pub fn height(&self) -> usize {
-        self.height
-    }
-
-    /// Number of interleaved channels per pixel: 1, 3, or 4.
-    pub fn channels(&self) -> u8 {
-        self.channels
-    }
-
-    /// Interleaved pixel bytes, row-major.
-    pub fn pixels(&self) -> &[u8] {
-        &self.pixels
-    }
-
-    /// Borrows the channels of one pixel, or None when out of bounds.
-    pub fn pixel(&self, x: usize, y: usize) -> Option<&[u8]> {
-        if x >= self.width || y >= self.height {
-            return None;
-        }
-        let channels = usize::from(self.channels);
-        let start = (y * self.width + x) * channels;
-        Some(&self.pixels[start..start + channels])
-    }
-}
 
 /// Decodes a PNG file with the documented file-size cap.
 pub fn decode_file(path: &Path) -> Result<Image> {
@@ -210,12 +170,7 @@ pub fn decode(bytes: &[u8]) -> Result<Image> {
         usize::from(header.channels),
     )?;
 
-    Ok(Image {
-        width: header.width,
-        height: header.height,
-        channels: header.channels,
-        pixels,
-    })
+    Image::new(header.width, header.height, header.channels, pixels)
 }
 
 #[derive(Debug, Clone, Copy)]

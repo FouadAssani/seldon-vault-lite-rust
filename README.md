@@ -3,18 +3,21 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M4 started — native PNG and DEFLATE decoding.**
+**Status: milestone M4 started — native PNG, JPEG, and DEFLATE decoding.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
 the persistent journal/snapshot store with BM25, exact vector search, RRF
 hybrid fusion, lock-free read-only views, and the CLI index, search, verify,
 and compact commands. M4 starts the image path with a native zlib/DEFLATE
-decoder and a strict PNG parser for non-interlaced 8-bit grayscale, RGB, and
-RGBA images, with dimension, pixel, decompressed-size, and file-size caps.
-JPEG, official image preprocessing, the vision encoder, and cross-modal search
-are not implemented yet; image and audio are not declared supported. HNSW
-remains deferred until measurements justify it.
+decoder, a strict PNG parser for non-interlaced 8-bit grayscale, RGB, and RGBA
+images, and a strict baseline JPEG decoder for 8-bit grayscale and
+three-component images with Huffman coding, quantization tables, restart
+intervals, and bilinear chroma upsampling. Both decoders share one validated
+decoded-image type and enforce file-size, dimension, pixel, block, MCU, and
+decoded-memory caps. Official image preprocessing, the vision encoder, and
+cross-modal search are not implemented yet; image and audio are not declared
+supported. HNSW remains deferred until measurements justify it.
 
 ## Requirements
 
@@ -86,7 +89,10 @@ the tiny official fixture still runs.
 | Native zlib/DEFLATE decoder (stored, fixed, dynamic) | implemented |
 | Strict PNG decoder for 8-bit gray/RGB/RGBA, non-interlaced | implemented |
 | PNG dimension, pixel, chunk, and decompression caps | implemented |
-| JPEG decoder | pending (M4) |
+| Strict baseline JPEG decoder for 8-bit gray and three-component images | implemented |
+| JPEG quantization, Huffman, entropy, restart, and marker validation | implemented |
+| JPEG dimension, pixel, MCU, block, and decoded-memory caps | implemented |
+| Shared validated decoded-image type for PNG and JPEG | implemented |
 | Official image preprocessing and vision encoder | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
@@ -103,6 +109,7 @@ the tiny official fixture still runs.
 - [ADR 0005 — Persistent storage and hybrid search](docs/adr/0005-persistent-storage-and-hybrid-search.md)
 - [ADR 0006 — Snapshots, compaction, and read-only views](docs/adr/0006-snapshots-compaction-and-read-only-views.md)
 - [ADR 0007 — Native PNG and DEFLATE decoding](docs/adr/0007-native-png-and-deflate-decoding.md)
+- [ADR 0008 — Native baseline JPEG decoding](docs/adr/0008-native-jpeg-decoding.md)
 - [Architecture (M4 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
