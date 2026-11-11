@@ -68,7 +68,9 @@ At M2:
 - `fixtures/model/manifest.json` records the frozen model and fixture
   fingerprints.
 
-Media fixtures will be added at M4/M5.
+PNG and baseline JPEG decoder fixtures were added at M4. They prove decoder
+behavior and corruption handling only; image embedding goldens are not yet
+available. Audio fixtures remain M5 work.
 
 ## Tokenization parity
 
@@ -126,7 +128,8 @@ Golden tests cover at least:
 - intermediate layer outputs and the final projection;
 - a query and an indexed document, kept distinct by their prefixes.
 
-Media coverage (images, WAV) is mandatory at M4/M5 and is not claimed here.
+Image decoder coverage exists for PNG and baseline JPEG, but image embeddings
+and WAV audio embeddings remain mandatory at M4/M5 and are not claimed here.
 
 ## Tolerances
 

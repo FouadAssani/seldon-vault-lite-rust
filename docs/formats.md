@@ -4,8 +4,8 @@ This document describes the formats implemented through milestone M4 (image
 path started) and the validation rules that protect the product from hostile
 input. ADR 0002 is the binary format decision record, ADR 0004 covers the
 text-embedding numerical path, ADR 0005 covers persistent storage and hybrid
-search, and ADR 0007 covers native PNG/DEFLATE decoding; this document is the
-operational reference.
+search, ADR 0007 covers native PNG/DEFLATE decoding, and ADR 0008 covers native
+baseline JPEG decoding; this document is the operational reference.
 
 ## Trust boundary
 
@@ -218,6 +218,85 @@ distances, bad checksums, preset dictionaries, and trailing bytes are rejected.
 The decoder lives in src/media/deflate.rs; the PNG parser lives in
 src/media/png.rs. Fixtures and provenance are documented in
 [fixtures/media/README.md](../fixtures/media/README.md).
+
+## JPEG
+
+Milestone M4 adds a native baseline and extended-sequential Huffman JPEG
+decoder. No external image library or process is used. ADR 0008 is the decision
+record; this section is the operational summary.
+
+### Supported variants
+
+- 8-bit sample precision;
+- one component (grayscale) or three components (YCbCr or R/G/B component ids);
+- one interleaved scan containing every frame component;
+- sampling factors from 1x1 to 4x4, with at most 10 blocks per MCU;
+- 8-bit quantization tables;
+- canonical DC and AC Huffman tables with ids 0 to 3;
+- restart intervals declared by DRI, with RST0 to RST7 markers.
+
+Rejected as unsupported: progressive JPEG (SOF2), arithmetic-coded JPEG,
+lossless and differential JPEG, 12-bit samples, 16-bit quantization tables,
+four or more components (CMYK/YCCK), and non-interleaved multi-scan files.
+Unknown markers are unsupported; malformed lengths, missing tables, invalid
+Huffman code spaces, invalid spectral selection, truncated entropy data, wrong
+restart markers, missing EOI, and trailing bytes are corruption errors.
+
+### Marker and entropy validation
+
+The parser requires SOI and exactly one SOF, validates every segment length,
+DQT precision and zigzag values, DHT code lengths and symbol counts, SOF
+component ids and sampling factors, SOS component coverage and baseline
+spectral selection (Ss=0, Se=63, Ah=Al=0), and EOI. APPn and COM segments are
+skipped without interpreting their content.
+
+Entropy data is read MSB-first with byte stuffing. Canonical Huffman decoding
+rejects oversubscribed tables and invalid codes. DC categories above 11 and AC
+categories above 10 are rejected; EOB and ZRL are supported; runs beyond the 63
+AC positions are corruption. DC predictors are reset at each restart marker.
+
+### Reconstruction and color
+
+The inverse DCT is a separable FP32 transform with precomputed cosine basis,
+level shift by 128, rounding, and clamping. Chroma upsampling is bilinear with
+sample-center alignment. Three components with R/G/B ids are treated as direct
+RGB; otherwise frame order is treated as YCbCr and converted with BT.601
+coefficients. An Adobe APP14 marker is validated: transform 1 is YCbCr,
+transform 0 requires R/G/B component ids, and transform 2 or an unknown
+transform is unsupported. The result is the shared media::Image type with one
+or three channels.
+
+Bilinear upsampling is deterministic and bounded, but it is not claimed to be
+bit-identical to any particular reference decoder; decoder comparisons use
+documented per-byte tolerances.
+
+### Caps
+
+| Limit | Value |
+|---|---|
+| JPEG file size | 64 MiB |
+| Width or height | 16,384 |
+| Pixel count | 16,777,216 |
+| Frame components | 3 |
+| MCU count | 4,194,304 |
+| Decoded 8x8 blocks | 4,000,000 |
+| Decoded memory (planes plus output) | 128 MiB |
+
+Dimensions, pixel count, component count, MCU count, block count, plane sizes,
+and output size are checked with checked arithmetic before large allocations.
+
+### Fixtures
+
+The committed JPEG fixtures are rgb_2x2.jpg, gray_2x2.jpg,
+gradient_16x16.jpg, quadrants_16x16.jpg, and quadrants_16x16_444.jpg. Their
+reference PNGs are rgb_2x2_ref.png, gray_2x2_ref.png, gradient_16x16_ref.png,
+quadrants_16x16_ref.png, and quadrants_16x16_444_ref.png. Provenance, sizes,
+SHA-256, sampling, and expected comparisons are recorded in
+[fixtures/media/README.md](../fixtures/media/README.md).
+
+The decoder lives in src/media/jpeg.rs; the shared image type lives in
+src/media/image.rs. Official image preprocessing, the vision encoder, image
+storage, and cross-modal search are not implemented yet.
 
 ## Storage journal
 

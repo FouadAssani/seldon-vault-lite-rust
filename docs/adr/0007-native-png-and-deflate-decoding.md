@@ -170,7 +170,7 @@ Tests cover:
 
 ### Follow-up
 
-- Implement the JPEG decoder with the same caps and fixture discipline.
+- The JPEG decoder follow-up is delivered in ADR 0008.
 - Inspect and reproduce the official image processor for resize, patches,
   positions, and the 280-token budget.
 - Implement the vision encoder and projection.

@@ -4,9 +4,9 @@
 
 This document describes the repository organization at milestone M4 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, or ADR 0007, which are
-authoritative for foundational, format, model, text-embedding, storage/index,
-snapshot/compaction, and PNG/DEFLATE decisions.
+ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, or ADR 0008,
+which are authoritative for foundational, format, model, text-embedding,
+storage/index, snapshot/compaction, PNG/DEFLATE, and JPEG decisions.
 
 ## Current state
 
@@ -38,8 +38,10 @@ The repository contains:
     │   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
     ├── media/
     │   ├── mod.rs
+    │   ├── image.rs        # shared validated decoded-image type
     │   ├── deflate.rs      # bounded zlib/DEFLATE decoder
-    │   └── png.rs          # strict PNG parser and scanline reconstruction
+    │   ├── png.rs          # strict PNG parser and scanline reconstruction
+    │   └── jpeg.rs         # strict baseline JPEG parser and decoder
     ├── storage/
     │   ├── mod.rs
     │   ├── codec.rs        # bounded little-endian encoder/decoder
@@ -62,7 +64,7 @@ The repository contains:
     tests/
     ├── cli.rs              # binary integration tests
     ├── formats.rs          # public API format/tensor integration tests
-    ├── media.rs            # public API PNG/DEFLATE integration tests
+    ├── media.rs            # public API PNG/JPEG/DEFLATE integration tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
@@ -73,6 +75,7 @@ The repository contains:
     ├── adr/0005-persistent-storage-and-hybrid-search.md
     ├── adr/0006-snapshots-compaction-and-read-only-views.md
     ├── adr/0007-native-png-and-deflate-decoding.md
+    ├── adr/0008-native-jpeg-decoding.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -86,9 +89,14 @@ The repository contains:
     │   ├── manifest.json    # frozen revision, sizes, SHA-256, prompts
     │   ├── text_golden.json # eight text cases and a layer probe
     │   └── tiny_text/       # complete 3-layer official model and golden outputs
-    └── tokenizer/
-        ├── golden.json      # official token ids for the golden corpus
-        └── mini_tokenizer.json # reduced tokenizer for reproducible tests
+    ├── tokenizer/
+    │   ├── golden.json      # official token ids for the golden corpus
+    │   └── mini_tokenizer.json # reduced tokenizer for reproducible tests
+    └── media/
+        ├── README.md        # PNG/JPEG provenance, hashes, and tolerances
+        ├── *.png            # PNG decoder inputs
+        ├── *.jpg            # JPEG decoder inputs
+        └── *_ref.png        # independent reference decodes
     tools/
     └── model-packer/
         └── README.md       # role planned at the packaging milestone
@@ -97,10 +105,10 @@ The repository contains:
 
 No api or jobs module is created empty. They will appear with their first
 testable feature, at the corresponding milestone. The media module now contains
-the native zlib/DEFLATE and PNG decoders; JPEG, official image preprocessing,
-and the vision encoder are not implemented yet. Image embeddings and audio
-inference are not claimed. Snapshots and compaction are implemented; see ADR
-0006.
+the native zlib/DEFLATE decoder, the PNG decoder, the baseline JPEG decoder, and
+the shared decoded-image type. Official image preprocessing and the vision
+encoder are not implemented yet. Image embeddings and audio inference are not
+claimed. Snapshots and compaction are implemented; see ADR 0006.
 
 ## Layers and dependencies
 
@@ -284,8 +292,24 @@ and the zlib stream. Palette, 16-bit, interlaced, tRNS, and unknown critical
 chunks are rejected as unsupported. Caps are 64 MiB per file, 16,384 per
 dimension, 16,777,216 pixels, and 64 MiB decompressed.
 
-JPEG, official image preprocessing, the vision encoder, image storage, and
-cross-modal search are not implemented yet. No image modality is claimed.
+src/media/jpeg.rs implements a strict baseline and extended-sequential Huffman
+JPEG decoder. It accepts 8-bit grayscale and three-component images with one
+interleaved scan, 1x1 to 4x4 sampling factors, 8-bit quantization tables,
+canonical DC/AC Huffman tables, and restart intervals. Progressive,
+arithmetic-coded, lossless, differential, 12-bit, 16-bit-quantization, CMYK, and
+non-interleaved multi-scan files are rejected as unsupported. The decoder
+validates markers, segment lengths, tables, component coverage, entropy
+stuffing, Huffman codes, coefficient runs, and restart markers before
+producing pixels. The inverse DCT is a deterministic FP32 scalar transform;
+chroma upsampling is bilinear; Adobe APP14 color transforms are validated.
+Caps are 64 MiB per file, 16,384 per dimension,
+16,777,216 pixels, 3 components, 4,194,304 MCUs, 4,000,000 blocks, and 128 MiB
+of decoded planes plus output.
+
+Both decoders return the shared media::Image type with interleaved 8-bit
+samples and one, three, or four channels. Official image preprocessing, the
+vision encoder, image storage, and cross-modal search are not implemented yet.
+No image modality is claimed. See ADR 0007 and ADR 0008.
 
 ## Model boundary
 
@@ -409,10 +433,14 @@ The full-model parity test is:
 It runs automatically when the model cache is present. Set
 SELDON_SKIP_MODEL_PARITY=1 to skip it during a quick check.
 
-M4 adds unit and integration tests for the zlib/DEFLATE decoder and the PNG
-parser, including every truncation of a valid fixture, corrupted chunk CRCs,
-unsupported PNG variants, decompression bombs, and all five scanline filters.
-The PNG fixtures and their provenance are recorded in fixtures/media/README.md.
+M4 adds unit and integration tests for the zlib/DEFLATE decoder, the PNG
+parser, and the JPEG decoder, including every truncation of valid PNG and JPEG
+fixtures, corrupted PNG chunk CRCs, unsupported PNG and JPEG variants,
+decompression bombs, all five PNG scanline filters, JPEG entropy and Huffman
+validation, restart intervals, Adobe APP14 color-transform validation, exact
+DC-only IDCT output, caps, and decoder comparisons against committed reference
+PNGs. The media fixtures and their
+provenance are recorded in fixtures/media/README.md.
 
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0.
@@ -422,8 +450,9 @@ a dependency or if minos is not 11.0.
 1. **M3**: journal, snapshots, safe compaction, read-only views, BM25, exact
    vector search, and RRF are implemented. HNSW remains deferred until volume
    and latency measurements justify it.
-2. **M4**: native PNG decoding and DEFLATE are implemented. Next: JPEG,
-   official image preprocessing, the vision encoder, and cross-modal tests.
+2. **M4**: native PNG and baseline JPEG decoding are implemented, with a
+   shared decoded-image type. Next: official image preprocessing, the vision
+   encoder, and cross-modal tests.
 3. **M5**: WAV and compliant audio embeddings.
 4. **M6**: HTTP API, bounded job queue, and hardening.
 5. **M7**: NEON and macOS packaging.
