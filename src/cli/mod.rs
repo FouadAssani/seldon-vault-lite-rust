@@ -1,9 +1,9 @@
-//! Analyse des arguments et exécution des commandes de la CLI.
+//! Argument parsing and command execution for the CLI.
 //!
-//! La CLI est volontairement minimale au jalon M0 : `version` et `help`.
-//! Les commandes `serve`, `embed`, `index`, `search` et `verify` seront
-//! ajoutées avec leurs fonctionnalités aux jalons suivants. Aucun stub ne
-//! simule un comportement inexistant.
+//! The CLI is deliberately minimal at milestone M0: `version` and `help`.
+//! The `serve`, `embed`, `index`, `search`, and `verify` commands will be
+//! added with their functionality in later milestones. No stub simulates
+//! nonexistent behavior.
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -11,48 +11,47 @@ use std::io::Write;
 use crate::error::{Error, Result};
 use crate::{PROGRAM_NAME, TARGET_TRIPLE, VERSION};
 
-/// Texte d'aide affiché par la commande `help`.
+/// Help text displayed by the `help` command.
 const HELP: &str = concat!(
     env!("CARGO_PKG_NAME"),
-    r#" — moteur local d'embeddings et de recherche multimodale
+    r#" — local multimodal embedding and search engine
 
 USAGE:
     "#,
     env!("CARGO_PKG_NAME"),
-    r#" <COMMANDE>
+    r#" <COMMAND>
 
-COMMANDES:
-    version    Affiche la version et la cible de compilation
-    help       Affiche cette aide
+COMMANDS:
+    version    Prints the version and build target
+    help       Prints this help
 
 OPTIONS:
-    -V, --version    Équivalent à `version`
-    -h, --help       Équivalent à `help`
+    -V, --version    Equivalent to `version`
+    -h, --help       Equivalent to `help`
 
-CODES DE SORTIE:
-    0    succès
-    1    erreur d'exécution
-    2    erreur d'usage
+EXIT CODES:
+    0    success
+    1    execution error
+    2    usage error
 
-Les commandes `serve`, `embed`, `index`, `search` et `verify` seront ajoutées
-avec les jalons M1 à M6. Aucune commande n'est simulée en attendant.
+The `serve`, `embed`, `index`, `search`, and `verify` commands will be added
+with milestones M1 to M6. No command is simulated in the meantime.
 "#
 );
 
-/// Commande reconnue par la CLI.
+/// Command recognized by the CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
-    /// Affiche la version du programme et la cible de compilation.
+    /// Prints the program version and build target.
     Version,
-    /// Affiche l'aide et les codes de sortie.
+    /// Prints help and exit codes.
     Help,
 }
 
-/// Analyse les arguments situés après le nom du programme.
+/// Parses the arguments following the program name.
 ///
-/// Les arguments non UTF-8 sont rejetés avec une erreur d'usage plutôt que de
-/// provoquer une panique : la CLI ne doit jamais s'interrompre sur une entrée
-/// hostile.
+/// Non-UTF-8 arguments are rejected with a usage error rather than causing a
+/// panic: the CLI must never abort on hostile input.
 pub fn parse<I, S>(args: I) -> Result<Command>
 where
     I: IntoIterator<Item = S>,
@@ -61,37 +60,37 @@ where
     let mut args = args.into_iter();
     let Some(first) = args.next() else {
         return Err(Error::usage(
-            "aucune commande fournie; utilisez `--help` pour afficher l'aide",
+            "no command provided; use `--help` to display help",
         ));
     };
     let first: OsString = first.into();
     let first = first
         .to_str()
-        .ok_or_else(|| Error::usage("argument non UTF-8"))?;
+        .ok_or_else(|| Error::usage("non-UTF-8 argument"))?;
 
     let command = match first {
         "version" | "--version" | "-V" => Command::Version,
         "help" | "--help" | "-h" => Command::Help,
         other => {
             return Err(Error::usage(format!(
-                "commande inconnue `{other}`; utilisez `--help`"
+                "unknown command `{other}`; use `--help`"
             )));
         }
     };
 
     if args.next().is_some() {
-        return Err(Error::usage(format!("arguments superflus après `{first}`")));
+        return Err(Error::usage(format!("extra arguments after `{first}`")));
     }
 
     Ok(command)
 }
 
-/// Exécute une commande et écrit sa sortie sur `stdout`.
+/// Executes a command and writes its output to `stdout`.
 ///
-/// # Erreurs
+/// # Errors
 ///
-/// Retourne une erreur d'E/S si l'écriture échoue, notamment lorsque la
-/// sortie standard est fermée par le processus appelant.
+/// Returns an I/O error if writing fails, particularly when standard output
+/// is closed by the calling process.
 pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
     match command {
         Command::Version => writeln!(stdout, "{PROGRAM_NAME} {VERSION} ({TARGET_TRIPLE})")?,
@@ -101,11 +100,11 @@ pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
     Ok(())
 }
 
-/// Point d'entrée de la CLI à partir des arguments bruts du processus.
+/// CLI entry point from the process's raw arguments.
 ///
-/// Le premier argument est le nom du programme, comme avec
-/// [`std::env::args_os`] ; il est ignoré. Le reste est analysé par
-/// [`parse`] puis exécuté par [`run`].
+/// The first argument is the program name, as with
+/// [`std::env::args_os`]; it is ignored. The rest is parsed by
+/// [`parse`] then executed by [`run`].
 pub fn main_entry<I, S>(args: I, stdout: &mut impl Write) -> Result<()>
 where
     I: IntoIterator<Item = S>,
@@ -131,7 +130,7 @@ mod tests {
     fn accepts_version_aliases() {
         for args in [&["version"][..], &["--version"], &["-V"]] {
             assert_eq!(
-                parse_args(args).expect("version doit être acceptée"),
+                parse_args(args).expect("version must be accepted"),
                 Command::Version
             );
         }
@@ -141,7 +140,7 @@ mod tests {
     fn accepts_help_aliases() {
         for args in [&["help"][..], &["--help"], &["-h"]] {
             assert_eq!(
-                parse_args(args).expect("help doit être acceptée"),
+                parse_args(args).expect("help must be accepted"),
                 Command::Help
             );
         }
@@ -149,41 +148,40 @@ mod tests {
 
     #[test]
     fn rejects_missing_command() {
-        let error = parse_args(&[]).expect_err("l'absence de commande doit échouer");
+        let error = parse_args(&[]).expect_err("a missing command must fail");
         assert!(matches!(error, Error::Usage(_)));
         assert_eq!(error.exit_code(), 2);
-        assert!(error.to_string().contains("aucune commande"));
+        assert!(error.to_string().contains("no command"));
     }
 
     #[test]
     fn rejects_unknown_command() {
-        let error = parse_args(&["serve"]).expect_err("serve n'existe pas encore");
+        let error = parse_args(&["serve"]).expect_err("serve does not exist yet");
         assert!(matches!(error, Error::Usage(_)));
-        assert!(error.to_string().contains("commande inconnue"));
+        assert!(error.to_string().contains("unknown command"));
     }
 
     #[test]
     fn rejects_extra_arguments() {
-        let error =
-            parse_args(&["version", "extra"]).expect_err("les arguments superflus doivent échouer");
+        let error = parse_args(&["version", "extra"]).expect_err("extra arguments must fail");
         assert!(matches!(error, Error::Usage(_)));
-        assert!(error.to_string().contains("arguments superflus"));
+        assert!(error.to_string().contains("extra arguments"));
     }
 
     #[test]
     fn rejects_non_utf8_argument() {
         let args = [OsStr::from_bytes(b"\xff")];
-        let error = parse(args.iter().copied()).expect_err("un argument non UTF-8 doit échouer");
+        let error = parse(args.iter().copied()).expect_err("a non-UTF-8 argument must fail");
         assert!(matches!(error, Error::Usage(_)));
-        assert!(error.to_string().contains("non UTF-8"));
+        assert!(error.to_string().contains("non-UTF-8"));
     }
 
     #[test]
     fn version_output_is_stable() {
         let mut output = Vec::new();
-        run(Command::Version, &mut output).expect("l'écriture doit réussir");
+        run(Command::Version, &mut output).expect("writing must succeed");
         assert_eq!(
-            String::from_utf8(output).expect("la sortie doit être de l'UTF-8"),
+            String::from_utf8(output).expect("output must be UTF-8"),
             format!("{PROGRAM_NAME} {VERSION} ({TARGET_TRIPLE})\n")
         );
     }
@@ -191,10 +189,10 @@ mod tests {
     #[test]
     fn help_contains_usage_and_exit_codes() {
         let mut output = Vec::new();
-        run(Command::Help, &mut output).expect("l'écriture doit réussir");
-        let text = String::from_utf8(output).expect("la sortie doit être de l'UTF-8");
+        run(Command::Help, &mut output).expect("writing must succeed");
+        let text = String::from_utf8(output).expect("output must be UTF-8");
         assert!(text.contains("USAGE:"));
-        assert!(text.contains("CODES DE SORTIE:"));
+        assert!(text.contains("EXIT CODES:"));
         assert!(text.contains("version"));
     }
 
@@ -202,9 +200,9 @@ mod tests {
     fn main_entry_ignores_program_name() {
         let mut output = Vec::new();
         main_entry(["seldon-vault-lite", "version"], &mut output)
-            .expect("la commande doit réussir");
+            .expect("the command must succeed");
         assert_eq!(
-            String::from_utf8(output).expect("la sortie doit être de l'UTF-8"),
+            String::from_utf8(output).expect("output must be UTF-8"),
             format!("{PROGRAM_NAME} {VERSION} ({TARGET_TRIPLE})\n")
         );
     }

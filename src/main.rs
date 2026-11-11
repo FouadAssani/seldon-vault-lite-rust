@@ -1,8 +1,8 @@
-//! Binaire `seldon-vault-lite`.
+//! `seldon-vault-lite` binary.
 //!
-//! `main` se contente de traduire le résultat de la CLI en code de sortie.
-//! Toute la logique d'analyse et d'exécution vit dans la bibliothèque afin
-//! d'être testable sans lancer de processus.
+//! `main` only translates the CLI result into an exit code. All parsing and
+//! execution logic lives in the library so it can be tested without launching
+//! a process.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -15,12 +15,12 @@ fn main() -> ExitCode {
 
     match cli::main_entry(std::env::args_os(), &mut stdout) {
         Ok(()) => ExitCode::SUCCESS,
-        // Un tuyau fermé est un comportement normal d'outil Unix, pas une panne.
+        // A closed pipe is normal Unix tool behavior, not a failure.
         Err(error) if error.is_broken_pipe() => ExitCode::SUCCESS,
         Err(error) => {
-            // L'écriture du diagnostic est best-effort : si stderr est lui aussi
-            // fermé, le code de sortie reste la seule information disponible.
-            let _ = writeln!(stderr, "erreur: {error}");
+            // Writing the diagnostic is best-effort: if stderr is also closed,
+            // the exit code remains the only available information.
+            let _ = writeln!(stderr, "error: {error}");
             let _ = stderr.flush();
             ExitCode::from(error.exit_code())
         }

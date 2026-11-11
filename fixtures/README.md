@@ -1,36 +1,32 @@
-# Fixtures et golden tests
+# Fixtures and golden tests
 
-Ce répertoire contiendra les golden tests compacts et versionnés du projet.
+This directory will contain the project's compact, versioned golden tests.
 
-## État au jalon M0
+## State at milestone M0
 
-Aucune fixture réelle n'est encore présente. Les poids du modèle ne sont pas
-figés et l'implémentation officielle n'a pas encore produit de référence. Ne
-pas fabriquer de fixtures « plausibles » : elles doivent provenir de
-l'implémentation officielle et être vérifiables.
+No real fixture is present yet. Model weights are not frozen and the official implementation has not yet produced a reference. Do not fabricate "plausible" fixtures: they must come from the official implementation and be verifiable.
 
-## Règles
+## Rules
 
-- Chaque fixture est compacte et versionnée.
-- Chaque fichier a une empreinte SHA-256 et une provenance explicite.
-- Aucun poids complet ni fichier de plusieurs gigaoctets.
-- Aucun secret, aucune donnée personnelle.
-- Les fixtures de tokenisation, de tenseurs et d'embeddings sont séparées.
-- Les fichiers binaires sont petits et reproductibles.
-- Les fixtures sont générées hors du produit, jamais par le binaire livré.
+- Each fixture is compact and versioned.
+- Each file has a SHA-256 fingerprint and explicit provenance.
+- No complete weights or multi-gigabyte file.
+- No secrets, no personal data.
+- Tokenization, tensor, and embedding fixtures are separate.
+- Binary files are small and reproducible.
+- Fixtures are generated outside the product, never by the delivered binary.
 
-## Structure prévue
+## Planned structure
 
 ```text
 fixtures/
 ├── README.md
-├── manifest.json          # provenance, révision du modèle, SHA-256
-├── tokenizer/             # token IDs attendus (M1/M2)
-├── tensors/               # sorties intermédiaires FP32 (M1/M2)
-├── embeddings/            # vecteurs finaux, dimensions MRL (M2)
-├── images/                # petites images PNG/JPEG (M4)
-└── audio/                 # extraits WAV courts (M5)
+├── manifest.json          # provenance, model revision, SHA-256
+├── tokenizer/             # expected token IDs (M1/M2)
+├── tensors/               # intermediate FP32 outputs (M1/M2)
+├── embeddings/            # final vectors, MRL dimensions (M2)
+├── images/                # small PNG/JPEG images (M4)
+└── audio/                 # short WAV excerpts (M5)
 ```
 
-Le manifeste et les fixtures seront ajoutés au fur et à mesure des jalons. Le
-format exact du manifeste sera défini au jalon M1.
+The manifest and fixtures will be added as milestones progress. The exact manifest format will be defined at milestone M1.

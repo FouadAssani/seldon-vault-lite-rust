@@ -1,31 +1,31 @@
-//! Fondations de Seldon Vault Lite.
+//! Foundations of Seldon Vault Lite.
 //!
-//! Le crate expose la CLI et le type d'erreur central. Les modules
-//! d'inférence, de stockage et de médias seront ajoutés au fil des jalons
-//! M1 à M9 ; aucun module vide n'est créé à l'avance.
+//! The crate exposes the CLI and the central error type. The inference,
+//! storage, and media modules will be added over milestones M1 to M9; no
+//! empty module is created in advance.
 //!
-//! Contrat du projet : aucune crate tierce, uniquement `std` et les
-//! intrinsics de `core::arch`.
+//! Project contract: no third-party crate, only `std` and `core::arch`
+//! intrinsics.
 
 #![warn(missing_docs)]
 
 pub mod cli;
 pub mod error;
 
-/// Version du crate, issue de `Cargo.toml`.
+/// Crate version, from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Nom du programme affiché par la CLI.
+/// Program name displayed by the CLI.
 ///
-/// Il est dérivé du nom du paquet afin que l'aide et la ligne de version ne
-/// puissent pas diverger si le paquet est renommé.
+/// It is derived from the package name so that help and the version line
+/// cannot diverge if the package is renamed.
 pub const PROGRAM_NAME: &str = env!("CARGO_PKG_NAME");
 
-/// Triple de la cible de compilation.
+/// Build target triple.
 ///
-/// La phase 1 ne valide que `aarch64-apple-darwin`. Les autres cibles
-/// renvoient `"unsupported"` tant que leur portage n'a pas été validé ; cela
-/// évite d'annoncer une compatibilité qui n'a pas été testée.
+/// Phase 1 only validates `aarch64-apple-darwin`. Other targets return
+/// `"unsupported"` until their port has been validated; this avoids
+/// announcing compatibility that has not been tested.
 pub const TARGET_TRIPLE: &str = if cfg!(all(target_arch = "aarch64", target_os = "macos")) {
     "aarch64-apple-darwin"
 } else {

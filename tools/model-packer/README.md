@@ -1,22 +1,15 @@
-# Model packer (prévu au jalon M12)
+# Model packer (planned at milestone M12)
 
-Ce répertoire accueillera le packer Rust `std` qui figera les poids, le
-tokenizer, les processeurs et le manifeste dans un conteneur interne versionné
-et vérifié.
+This directory will host the Rust `std` packer that will freeze the weights, tokenizer, processors, and manifest into a versioned and verified internal container.
 
-## Contraintes
+## Constraints
 
-- Rust `std` uniquement, aucune crate tierce.
-- Aucun processus externe, aucun FFI.
-- Le conteneur porte une magie, une version, des sections cadrées, des
-  longueurs bornées et des checksums.
-- Le packer est un outil de développement ; il ne fait pas partie du binaire
-  livré au runtime.
-- Les poids ne sont jamais commités dans Git.
+- Rust `std` only, no third-party crates.
+- No external process, no FFI.
+- The container carries a magic, a version, framed sections, bounded lengths, and checksums.
+- The packer is a development tool; it is not part of the binary delivered at runtime.
+- Weights are never committed to Git.
 
-## État au jalon M0
+## State at milestone M0
 
-Aucun code n'est encore présent. Le packer sera écrit lorsque le format des
-poids et la parité numérique seront stabilisés (M1/M2), et utilisé pour le
-packaging final (M12). Créer un stub maintenant donnerait une fausse impression
-de fonctionnalité.
+No code is present yet. The packer will be written when the weight format and numerical parity are stabilized (M1/M2), and used for final packaging (M12). Creating a stub now would give a false impression of functionality.

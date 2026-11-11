@@ -1,5 +1,5 @@
-# Chaîne stable ; la version validée pour M0 est 1.99.1 (documentée dans
-# l'ADR 0001). La cible de la phase 1 est macOS Apple Silicon uniquement.
+# Stable toolchain; the version validated for M0 is 1.99.1 (documented in
+# ADR 0001). The phase 1 target is macOS Apple Silicon only.
 [toolchain]
 channel = "stable"
 profile = "minimal"

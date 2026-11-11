@@ -1,101 +1,78 @@
-# Parité numérique et jeux de référence
+# Numerical parity and reference datasets
 
-## Statut
+## Status
 
-Au jalon M0, ce document fixe les **critères** de parité et la politique des
-fixtures. Aucun poids du modèle n'est encore figé ni chargé, et aucun golden
-test réel n'existe. Les valeurs de tolérance ci-dessous sont des cibles
-initiales ; elles seront confirmées ou ajustées avec l'implémentation
-officielle au jalon M2, et tout ajustement sera documenté avec sa justification.
+At milestone M0, this document sets the parity **criteria** and the fixture policy. No model weights are frozen or loaded yet, and no real golden test exists. The tolerance values below are initial targets; they will be confirmed or adjusted with the official implementation at milestone M2, and any adjustment will be documented with its justification.
 
-## Principe
+## Principle
 
-L'implémentation officielle de `google/embeddinggemma-2` sert de référence
-**en laboratoire uniquement**. Elle ne fait pas partie du produit, n'est pas
-une dépendance Cargo et n'est jamais lancée par le binaire livré.
+The official `google/embeddinggemma-2` implementation serves as a reference **in the laboratory only**. It is not part of the product, is not a Cargo dependency, and is never launched by the delivered binary.
 
-Les golden tests sont produits hors du produit, puis figés dans `fixtures/`
-sous forme compacte. Le produit ne fait que lire ces fixtures et comparer ses
-sorties.
+Golden tests are produced outside the product, then frozen in `fixtures/` in compact form. The product only reads these fixtures and compares its outputs.
 
-## Manifeste du modèle
+## Model manifest
 
-Avant toute intégration, un manifeste versionné doit enregistrer :
+Before any integration, a versioned manifest must record:
 
-- le dépôt et la **révision exacte** du modèle ;
-- la liste des fichiers utilisés (config, tokenizer, processeurs, poids,
-  prompts) ;
-- la taille et le **SHA-256** de chaque fichier ;
-- la provenance des fixtures et l'outil qui les a générées ;
-- la version du schéma du manifeste.
+- the repository and **exact revision** of the model;
+- the list of files used (config, tokenizer, processors, weights, prompts);
+- the size and **SHA-256** of each file;
+- the provenance of the fixtures and the tool that generated them;
+- the manifest schema version.
 
-Les poids géants ne sont jamais commités. Le manifeste, lui, est versionné.
+Giant weights are never committed. The manifest itself is versioned.
 
 ## Fixtures
 
-Règles :
+Rules:
 
-- taille compacte ; privilégier des extraits et des tenseurs réduits ;
-- provenance explicite : modèle, révision, script de génération, date ;
-- empreinte SHA-256 de chaque fichier de fixture ;
-- aucune donnée personnelle, aucun secret ;
-- pas de poids complets, pas de fichier de plusieurs gigaoctets ;
-- nommage stable et versionné.
+- compact size; prefer excerpts and reduced tensors;
+- explicit provenance: model, revision, generation script, date;
+- SHA-256 fingerprint of each fixture file;
+- no personal data, no secrets;
+- no complete weights, no multi-gigabyte file;
+- stable, versioned naming.
 
-Le fichier `fixtures/README.md` décrit la politique ; les fixtures réelles
-seront ajoutées aux jalons M1 (formats), M2 (texte) et M4/M5 (médias).
+The `fixtures/README.md` file describes the policy; real fixtures will be added at milestones M1 (formats), M2 (text), and M4/M5 (media).
 
-## Couverture obligatoire
+## Mandatory coverage
 
-Les golden tests doivent couvrir au minimum :
+Golden tests must cover at least:
 
-- français accentué, anglais, code source ;
-- chaîne vide, Unicode, emoji, caractères de contrôle ;
-- entrées longues et limites contextuelles ;
-- images variées : couleurs, niveaux de gris, rapports d'aspect, rotations ;
-- extraits WAV : silence, son court, son long, voix, musique, environnement ;
-- dimensions 768, 512, 256 et 128 ;
-- requêtes et documents indexés, avec les préfixes officiels.
+- accented French, English, source code;
+- empty string, Unicode, emoji, control characters;
+- long inputs and context limits;
+- varied images: colors, grayscale, aspect ratios, rotations;
+- WAV excerpts: silence, short sound, long sound, speech, music, environment;
+- dimensions 768, 512, 256, and 128;
+- queries and indexed documents, with the official prefixes.
 
-## Tolérances
+## Tolerances
 
-| Objet | Comparaison | Tolérance initiale |
+| Object | Comparison | Initial tolerance |
 |---|---|---|
-| Token IDs | égalité exacte | aucune divergence acceptée |
-| Dimensions et formes | égalité exacte | aucune divergence acceptée |
-| Tenseurs FP32 intermédiaires | absolue + relative | `atol <= 1e-5`, `rtol <= 1e-4` pour les valeurs de magnitude supérieure à `1e-3` |
-| Embeddings FP32 finaux | cosinus + absolue | `cos >= 0.9999`, `atol <= 1e-4` après normalisation L2 |
-| Embeddings quantifiés (futur) | cosinus + rappel | `cos >= 0.999`, `recall@10 >= 0.99` face à l'oracle FP32 |
-| Classement de recherche FP32 | rang | top-1 identique, `recall@10 = 1.0` sur le corpus de référence |
-| Classement de recherche quantifié | rang | `recall@10 >= 0.99` face à l'oracle FP32 |
+| Token IDs | exact equality | no divergence accepted |
+| Dimensions and shapes | exact equality | no divergence accepted |
+| Intermediate FP32 tensors | absolute + relative | `atol <= 1e-5`, `rtol <= 1e-4` for values of magnitude greater than `1e-3` |
+| Final FP32 embeddings | cosine + absolute | `cos >= 0.9999`, `atol <= 1e-4` after L2 normalization |
+| Quantized embeddings (future) | cosine + recall | `cos >= 0.999`, `recall@10 >= 0.99` against the FP32 oracle |
+| FP32 search ranking | rank | identical top-1, `recall@10 = 1.0` on the reference corpus |
+| Quantized search ranking | rank | `recall@10 >= 0.99` against the FP32 oracle |
 
-Les NaN et les infinis sont interdits dans les sorties attendues. Une
-tolérance ne doit jamais masquer une erreur de tokenisation, de dimension ou de
-prompt.
+NaN and infinities are forbidden in expected outputs. A tolerance must never hide a tokenization, dimension, or prompt error.
 
-## Règle bloquante
+## Blocking rule
 
-Toute divergence de **token IDs** bloque l'intégration des couches
-d'inférence. Une couche dont les sorties dépassent les tolérances ne peut pas
-être déclarée compatible, même si le classement final « semble » correct.
+Any **token ID** divergence blocks the integration of inference layers. A layer whose outputs exceed tolerances cannot be declared compatible, even if the final ranking "seems" correct.
 
-## Déterminisme
+## Determinism
 
-Le chemin scalaire FP32 est la référence. Les kernels SIMD et les
-optimisations doivent être comparés au scalaire avant toute mesure de
-performance. Les golden tests sont rejoués après chaque optimisation ; un gain
-qui casse la parité est rejeté.
+The FP32 scalar path is the reference. SIMD kernels and optimizations must be compared with the scalar path before any performance measurement. Golden tests are replayed after each optimization; a gain that breaks parity is rejected.
 
-## Prompts et rôles
+## Prompts and roles
 
-Les préfixes officiels `SearchQuery` et `Document` doivent être appliqués
-selon la configuration du modèle. Une requête et un document indexé ne sont
-jamais confondus. Les titres de documents sont préservés lorsque le prompt
-officiel le prévoit.
+The official `SearchQuery` and `Document` prefixes must be applied according to the model configuration. A query and an indexed document are never confused. Document titles are preserved when the official prompt provides for it.
 
-## Limites
+## Limits
 
-Les fixtures ne prouvent pas la compatibilité avec toutes les entrées
-possibles. Elles prouvent la conformité sur un corpus documenté et
-reproductible. Les tests de robustesse (corruption, troncature, tailles
-extrêmes) sont distincts des tests de parité.
+Fixtures do not prove compatibility with all possible inputs. They prove compliance on a documented and reproducible corpus. Robustness tests (corruption, truncation, extreme sizes) are distinct from parity tests.

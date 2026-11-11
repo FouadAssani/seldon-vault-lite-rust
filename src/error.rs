@@ -1,42 +1,41 @@
-//! Type d'erreur central de Seldon Vault Lite.
+//! Central error type for Seldon Vault Lite.
 //!
-//! Toutes les erreurs du produit convergent ici afin que la CLI, puis l'API
-//! HTTP, puissent choisir un code de sortie ou un statut sans inspecter des
-//! erreurs ad hoc. Les variantes d'entrée corrompue et de limite dépassée
-//! seront ajoutées avec les parseurs du jalon M1.
+//! All product errors converge here so that the CLI, then the HTTP API, can
+//! choose an exit code or status without inspecting ad hoc errors. The
+//! corrupted-input and limit-exceeded variants will be added with the
+//! milestone M1 parsers.
 
 use std::error::Error as StdError;
 use std::fmt;
 use std::io;
 
-/// Résultat interne du crate.
+/// Internal crate result.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Erreur centrale du produit.
+/// Central product error.
 ///
-/// Les variantes distinguent une erreur d'usage (code de sortie 2) d'une
-/// erreur d'exécution (code de sortie 1). La taxonomie sera étendue avec les
-/// erreurs d'entrée corrompue et de limite dépassée lorsque les parseurs
-/// correspondants existeront.
+/// The variants distinguish a usage error (exit code 2) from an execution
+/// error (exit code 1). The taxonomy will be extended with corrupted-input
+/// and limit-exceeded errors when the corresponding parsers exist.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    /// Commande ou argument invalide fourni par l'utilisateur.
+    /// Invalid command or argument provided by the user.
     Usage(String),
-    /// Échec d'entrée/sortie.
+    /// Input/output failure.
     Io(io::Error),
 }
 
 impl Error {
-    /// Construit une erreur d'usage.
+    /// Builds a usage error.
     pub fn usage(message: impl Into<String>) -> Self {
         Self::Usage(message.into())
     }
 
-    /// Code de sortie du processus associé à cette erreur.
+    /// Process exit code associated with this error.
     ///
-    /// `0` est réservé au succès, `1` aux erreurs d'exécution et `2` aux
-    /// erreurs d'usage.
+    /// `0` is reserved for success, `1` for execution errors, and `2` for
+    /// usage errors.
     pub fn exit_code(&self) -> u8 {
         match self {
             Self::Usage(_) => 2,
@@ -44,10 +43,10 @@ impl Error {
         }
     }
 
-    /// Indique si l'erreur provient d'un tuyau fermé par le processus appelant.
+    /// Indicates whether the error comes from a pipe closed by the calling process.
     ///
-    /// Un tuyau fermé n'est pas une panne du programme : la CLI peut alors
-    /// terminer avec le code de succès, comme le font les outils Unix.
+    /// A closed pipe is not a program failure: the CLI can then finish with
+    /// the success code, as Unix tools do.
     pub fn is_broken_pipe(&self) -> bool {
         matches!(self, Self::Io(error) if error.kind() == io::ErrorKind::BrokenPipe)
     }
@@ -83,24 +82,24 @@ mod tests {
 
     #[test]
     fn usage_errors_exit_with_code_two() {
-        let error = Error::usage("commande invalide");
+        let error = Error::usage("invalid command");
         assert!(matches!(error, Error::Usage(_)));
         assert_eq!(error.exit_code(), 2);
         assert!(!error.is_broken_pipe());
-        assert_eq!(error.to_string(), "commande invalide");
+        assert_eq!(error.to_string(), "invalid command");
         assert!(StdError::source(&error).is_none());
     }
 
     #[test]
     fn io_errors_exit_with_code_one() {
-        let error = Error::from(io::Error::other("panne"));
+        let error = Error::from(io::Error::other("failure"));
         assert_eq!(error.exit_code(), 1);
         assert!(!error.is_broken_pipe());
         assert_eq!(
             StdError::source(&error)
-                .expect("une erreur d'E/S doit exposer sa source")
+                .expect("an I/O error must expose its source")
                 .to_string(),
-            "panne"
+            "failure"
         );
     }
 

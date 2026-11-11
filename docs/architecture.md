@@ -1,120 +1,102 @@
-# Architecture — état du jalon M0
+# Architecture — milestone M0 state
 
-## Objet
+## Purpose
 
-Ce document décrit l'organisation du dépôt au jalon M0 et les frontières que
-les jalons suivants devront respecter. Il ne remplace pas l'ADR 0001, qui fait
-foi pour les décisions de fond.
+This document describes the repository organization at milestone M0 and the boundaries that later milestones must respect. It does not replace ADR 0001, which is authoritative for foundational decisions.
 
-## État actuel
+## Current state
 
-Le dépôt contient :
+The repository contains:
 
 ```text
-Cargo.toml              # zéro dépendance
-Cargo.lock              # verrouillage reproductible
-rust-toolchain.toml     # stable (validée 1.99.1), clippy, rustfmt, ARM64
-.cargo/config.toml      # cible aarch64-apple-darwin, macOS 11.0
+Cargo.toml              # zero dependencies
+Cargo.lock              # reproducible locking
+rust-toolchain.toml     # stable (validated 1.99.1), clippy, rustfmt, ARM64
+.cargo/config.toml      # aarch64-apple-darwin target, macOS 11.0
 src/
-├── main.rs             # traduction du résultat CLI en code de sortie
-├── lib.rs              # constantes de version/cible et racine des modules
-├── error.rs            # type d'erreur central
-└── cli/mod.rs          # parsing et exécution de `version`/`help`
+├── main.rs             # translates the CLI result into an exit code
+├── lib.rs              # version/target constants and module root
+├── error.rs            # central error type
+└── cli/mod.rs          # parsing and execution of `version`/`help`
 tests/
-└── cli.rs              # tests d'intégration du binaire
+└── cli.rs              # binary integration tests
 docs/
-├── adr/0001-fondations.md
+├── adr/0001-foundations.md
 ├── architecture.md
 └── model-parity.md
 fixtures/
-└── README.md           # politique des golden tests (aucune fixture réelle)
+└── README.md           # golden test policy (no real fixture)
 tools/
 └── model-packer/
-    └── README.md       # rôle prévu au jalon M12
+    └── README.md       # role planned at milestone M12
 scripts/
-└── verify.sh           # porte de qualité complète du jalon
+└── verify.sh           # full milestone quality gate
 ```
 
-Aucun module `api`, `binary`, `tensor`, `model`, `media`, `index`,
-`storage` ou `jobs` n'est créé à vide. Ils apparaîtront avec leur première
-fonctionnalité testable, au jalon correspondant.
+No `api`, `binary`, `tensor`, `model`, `media`, `index`, `storage`, or `jobs` module is created empty. They will appear with their first testable feature, at the corresponding milestone.
 
-## Couches et dépendances
+## Layers and dependencies
 
-La bibliothèque `seldon_vault_lite` est la racine testable ; le binaire
-`main.rs` ne fait qu'appeler la CLI et convertir les erreurs en codes de
-sortie. Les futurs modules suivront les dépendances descendantes :
+The `seldon_vault_lite` library is the testable root; the `main.rs` binary only calls the CLI and converts errors into exit codes. Future modules will follow downward dependencies:
 
 ```text
 cli / api  →  model / index / storage  →  tensor / binary / media  →  error
 ```
 
-Règles :
+Rules:
 
-- `error` ne dépend d'aucun autre module interne.
-- Les parseurs ne dépendent pas des couches d'inférence.
-- Le stockage ne dépend pas de l'API HTTP.
-- Aucun module ne dépend d'une crate tierce.
+- `error` depends on no other internal module.
+- Parsers do not depend on inference layers.
+- Storage does not depend on the HTTP API.
+- No module depends on a third-party crate.
 
-## Contrat CLI
+## CLI contract
 
-| Commande | Effet | Sortie | Code |
+| Command | Effect | Output | Code |
 |---|---|---|---|
-| `version` | Affiche `seldon-vault-lite <version> (<cible>)` | stdout | 0 |
-| `help` | Affiche l'aide, les commandes et les codes | stdout | 0 |
-| `--version`, `-V` | Alias de `version` | stdout | 0 |
-| `--help`, `-h` | Alias de `help` | stdout | 0 |
-| aucune commande | Erreur d'usage | stderr | 2 |
-| commande inconnue | Erreur d'usage | stderr | 2 |
-| argument superflu | Erreur d'usage | stderr | 2 |
-| argument non UTF-8 | Erreur d'usage | stderr | 2 |
-| échec d'écriture | Erreur d'exécution | stderr (best-effort) | 1 |
-| tuyau fermé | Fin normale | — | 0 |
+| `version` | Prints `seldon-vault-lite <version> (<target>)` | stdout | 0 |
+| `help` | Prints help, commands, and codes | stdout | 0 |
+| `--version`, `-V` | Alias of `version` | stdout | 0 |
+| `--help`, `-h` | Alias of `help` | stdout | 0 |
+| no command | Usage error | stderr | 2 |
+| unknown command | Usage error | stderr | 2 |
+| extra argument | Usage error | stderr | 2 |
+| non-UTF-8 argument | Usage error | stderr | 2 |
+| write failure | Execution error | stderr (best-effort) | 1 |
+| closed pipe | Normal end | — | 0 |
 
-Les commandes `serve`, `embed`, `index`, `search` et `verify` sont
-planifiées mais **ne sont pas encore acceptées**. Les refuser explicitement
-vaut mieux que renvoyer un résultat factice.
+The `serve`, `embed`, `index`, `search`, and `verify` commands are planned but **not yet accepted**. Explicitly refusing them is better than returning a fake result.
 
-## Modèle d'erreurs
+## Error model
 
-`src/error.rs` définit `Error` et `Result<T>`. Les variantes actuelles sont
-`Usage(String)` et `Io(io::Error)`. L'énumération est `#[non_exhaustive]`
-pour permettre l'ajout des variantes `Corrupt`, `LimitExceeded` et
-`Internal` sans casser les appelants.
+`src/error.rs` defines `Error` and `Result<T>`. The current variants are `Usage(String)` and `Io(io::Error)`. The enum is `#[non_exhaustive]` to allow adding `Corrupt`, `LimitExceeded`, and `Internal` variants without breaking callers.
 
-Règles :
+Rules:
 
-- `?` propage les erreurs ; aucun `unwrap()` sur une entrée externe.
-- `Display` produit un message destiné à l'utilisateur ; `source()` expose la
-  cause technique.
-- `exit_code()` centralise la traduction en code de sortie.
-- L'API HTTP réutilisera la même taxonomie pour choisir les statuts.
+- `?` propagates errors; no `unwrap()` on external input.
+- `Display` produces a user-facing message; `source()` exposes the technical cause.
+- `exit_code()` centralizes translation into an exit code.
+- The HTTP API will reuse the same taxonomy to choose statuses.
 
-## Frontières de confiance
+## Trust boundaries
 
-Tout ce qui vient de l'extérieur est non fiable : arguments CLI, fichiers,
-corps HTTP, JSON, en-têtes Safetensors, images, audio et métadonnées. Chaque
-frontière doit :
+Everything coming from outside is untrusted: CLI arguments, files, HTTP bodies, JSON, Safetensors headers, images, audio, and metadata. Each boundary must:
 
-1. valider les types, longueurs, offsets et versions avant allocation ;
-2. plafonner les dimensions et la mémoire ;
-3. utiliser une arithmétique vérifiée ;
-4. renvoyer une erreur typée, jamais une panique.
+1. validate types, lengths, offsets, and versions before allocation;
+2. cap dimensions and memory;
+3. use checked arithmetic;
+4. return a typed error, never a panic.
 
-Le chemin scalaire FP32 reste la référence de correction pour tous les calculs
-numériques. Les optimisations SIMD ne seront acceptées qu'après concordance
-avec ce chemin et rejeu des golden tests.
+The FP32 scalar path remains the correctness reference for all numerical computations. SIMD optimizations will be accepted only after agreement with this path and replay of golden tests.
 
-## Configuration de compilation
+## Build configuration
 
-- Cible : `aarch64-apple-darwin` (imposée par `.cargo/config.toml`).
-- Déploiement : `MACOSX_DEPLOYMENT_TARGET=11.0` (forcé).
-- `rust-toolchain.toml` : chaîne stable (validée avec Rust 1.99.1),
-  `clippy`, `rustfmt`.
-- `Cargo.toml` : aucune dépendance ; profil release `opt-level = 3`,
-  `lto = "thin"`, `codegen-units = 1`.
+- Target: `aarch64-apple-darwin` (enforced by `.cargo/config.toml`).
+- Deployment: `MACOSX_DEPLOYMENT_TARGET=11.0` (forced).
+- `rust-toolchain.toml`: stable toolchain (validated with Rust 1.99.1), `clippy`, `rustfmt`.
+- `Cargo.toml`: no dependencies; release profile `opt-level = 3`, `lto = "thin"`, `codegen-units = 1`.
 
-## Vérification
+## Verification
 
 ```bash
 cargo fmt --check
@@ -126,24 +108,18 @@ otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
 vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
 ```
 
-Le script `scripts/verify.sh` regroupe ces commandes et échoue si le graphe
-Cargo contient une dépendance ou si `minos` n'est pas 11.0.
+The `scripts/verify.sh` script groups these commands and fails if the Cargo graph contains a dependency or if `minos` is not 11.0.
 
-La sortie de `cargo tree` doit être réduite à
-`seldon-vault-lite v0.1.0`. `otool -L` ne doit lister que
-`/usr/lib/libSystem.B.dylib` (et éventuellement les bibliothèques système
-attendues par le runtime Rust). `vtool` doit confirmer `minos 11.0`.
+The `cargo tree` output must be reduced to `seldon-vault-lite v0.1.0`. `otool -L` must list only `/usr/lib/libSystem.B.dylib` (and possibly system libraries expected by the Rust runtime). `vtool` must confirm `minos 11.0`.
 
-## Prochaines étapes
+## Next steps
 
-1. **M1** : lecteur d'octets borné, JSON strict, Safetensors, BF16 ↔ FP32,
-   tenseurs et kernels scalaires FP32.
-2. **M2** : tokenisation exacte et embeddings texte conformes.
-3. **M3** : stockage persistant, index BM25/KNN et fusion RRF.
-4. **M4/M5** : décodeurs PNG/JPEG/WAV et embeddings multimodaux.
-5. **M6** : API HTTP, jobs et durcissement.
-6. **M7** : NEON et packaging macOS.
-7. **M8/M9** : validation finale macOS, puis portage Linux.
+1. **M1**: bounded byte reader, strict JSON, Safetensors, BF16 ↔ FP32, tensors, and FP32 scalar kernels.
+2. **M2**: exact tokenization and compliant text embeddings.
+3. **M3**: persistent storage, BM25/KNN index, and RRF fusion.
+4. **M4/M5**: PNG/JPEG/WAV decoders and multimodal embeddings.
+5. **M6**: HTTP API, jobs, and hardening.
+6. **M7**: NEON and macOS packaging.
+7. **M8/M9**: final macOS validation, then Linux port.
 
-Aucune de ces étapes ne doit être déclarée terminée sans tests reproductibles
-et sans rejeu des golden tests.
+None of these steps may be declared complete without reproducible tests and without replaying the golden tests.

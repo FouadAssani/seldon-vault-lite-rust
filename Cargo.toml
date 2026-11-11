@@ -3,13 +3,13 @@ name = "seldon-vault-lite"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Moteur local d'embeddings, d'indexation et de recherche multimodale, 100 % Rust std."
+description = "Local multimodal embedding, indexing, and search engine, 100% Rust std."
 publish = false
 
-# Contrat « zéro crate » : aucune section [dependencies], [dev-dependencies]
-# ni [build-dependencies]. Seuls std et core::arch sont autorisés.
-# Vérification : cargo tree --edges normal,build,dev ne doit afficher que la
-# crate racine.
+# "Zero crate" contract: no [dependencies], [dev-dependencies],
+# or [build-dependencies] section. Only std and core::arch are allowed.
+# Verification: cargo tree --edges normal,build,dev must show only the
+# root crate.
 
 [profile.release]
 opt-level = 3

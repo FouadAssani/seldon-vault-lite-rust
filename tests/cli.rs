@@ -1,7 +1,7 @@
-//! Tests d'intégration de la CLI du jalon M0.
+//! CLI integration tests for milestone M0.
 //!
-//! Ils exécutent le vrai binaire afin de vérifier le contrat observable :
-//! sortie standard, sortie d'erreur et codes de sortie.
+//! They run the real binary to verify the observable contract: standard
+//! output, standard error, and exit codes.
 
 use std::process::{Command, Output};
 
@@ -11,15 +11,15 @@ fn run(args: &[&str]) -> Output {
     Command::new(BIN)
         .args(args)
         .output()
-        .expect("le binaire de test doit pouvoir être lancé")
+        .expect("the test binary must be launchable")
 }
 
 fn stdout(output: &Output) -> String {
-    String::from_utf8(output.stdout.clone()).expect("stdout doit être de l'UTF-8")
+    String::from_utf8(output.stdout.clone()).expect("stdout must be UTF-8")
 }
 
 fn stderr(output: &Output) -> String {
-    String::from_utf8(output.stderr.clone()).expect("stderr doit être de l'UTF-8")
+    String::from_utf8(output.stderr.clone()).expect("stderr must be UTF-8")
 }
 
 fn expected_version() -> String {
@@ -42,11 +42,11 @@ fn version_prints_name_version_and_target() {
 fn version_aliases_are_equivalent() {
     for args in [&["version"][..], &["--version"], &["-V"]] {
         let output = run(args);
-        assert!(output.status.success(), "échec pour {args:?}");
+        assert!(output.status.success(), "failed for {args:?}");
         assert_eq!(
             stdout(&output),
             expected_version(),
-            "sortie différente pour {args:?}"
+            "output differs for {args:?}"
         );
         assert!(output.stderr.is_empty());
     }
@@ -56,12 +56,12 @@ fn version_aliases_are_equivalent() {
 fn help_explains_usage_and_exit_codes() {
     for args in [&["help"][..], &["--help"], &["-h"]] {
         let output = run(args);
-        assert!(output.status.success(), "échec pour {args:?}");
+        assert!(output.status.success(), "failed for {args:?}");
         let text = stdout(&output);
-        assert!(text.contains("USAGE:"), "aide sans USAGE pour {args:?}");
+        assert!(text.contains("USAGE:"), "help without USAGE for {args:?}");
         assert!(
-            text.contains("CODES DE SORTIE:"),
-            "aide sans codes pour {args:?}"
+            text.contains("EXIT CODES:"),
+            "help without codes for {args:?}"
         );
         assert!(text.contains("version"));
         assert!(output.stderr.is_empty());
@@ -74,18 +74,18 @@ fn missing_command_is_a_usage_error() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let text = stderr(&output);
-    assert!(text.contains("erreur:"));
-    assert!(text.contains("aucune commande"));
+    assert!(text.contains("error:"));
+    assert!(text.contains("no command"));
 }
 
 #[test]
 fn unknown_command_is_a_usage_error() {
-    // `serve` est planifiée mais n'est pas encore implémentée : la CLI doit
-    // refuser explicitement au lieu de simuler un service.
+    // `serve` is planned but not yet implemented: the CLI must
+    // explicitly refuse instead of simulating a service.
     let output = run(&["serve"]);
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
-    assert!(stderr(&output).contains("commande inconnue"));
+    assert!(stderr(&output).contains("unknown command"));
 }
 
 #[test]
@@ -93,5 +93,5 @@ fn extra_arguments_are_rejected() {
     let output = run(&["version", "extra"]);
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
-    assert!(stderr(&output).contains("arguments superflus"));
+    assert!(stderr(&output).contains("extra arguments"));
 }
