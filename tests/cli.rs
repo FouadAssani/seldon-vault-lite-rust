@@ -1,4 +1,4 @@
-//! CLI integration tests for milestone M0.
+//! CLI integration tests for milestones M0 to M2.
 //!
 //! They run the real binary to verify the observable contract: standard
 //! output, standard error, and exit codes.
@@ -94,4 +94,70 @@ fn extra_arguments_are_rejected() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     assert!(stderr(&output).contains("extra arguments"));
+}
+#[test]
+fn embed_ids_prints_a_json_vector() {
+    let output = run(&[
+        "embed",
+        "--model-dir",
+        "fixtures/model/tiny_text",
+        "--ids",
+        "1,5,7,9,2",
+        "--dim",
+        "8",
+    ]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(output.stderr.is_empty());
+    let text = stdout(&output);
+    let value = seldon_vault_lite::json::parse(text.trim()).expect("stdout must be JSON");
+    let array = value.as_array().expect("output must be an array");
+    assert_eq!(array.len(), 8);
+    let norm: f64 = array
+        .iter()
+        .map(|value| {
+            let value = value.as_number().expect("a number").as_f64();
+            value * value
+        })
+        .sum();
+    assert!((norm - 1.0).abs() <= 1e-4, "vector norm {norm}");
+}
+
+#[test]
+fn embed_rejects_a_dimension_above_the_model_output() {
+    let output = run(&[
+        "embed",
+        "--model-dir",
+        "fixtures/model/tiny_text",
+        "--ids",
+        "1,5,7,9,2",
+        "--dim",
+        "9",
+    ]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(stderr(&output).contains("dimension"));
+}
+
+#[test]
+fn embed_rejects_an_out_of_vocabulary_id() {
+    let output = run(&[
+        "embed",
+        "--model-dir",
+        "fixtures/model/tiny_text",
+        "--ids",
+        "1,64",
+        "--dim",
+        "8",
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(stderr(&output).contains("vocabulary"));
+}
+
+#[test]
+fn embed_help_is_available() {
+    let output = run(&["embed", "--help"]);
+    assert!(output.status.success());
+    assert!(stdout(&output).contains("USAGE:"));
+    assert!(output.stderr.is_empty());
 }

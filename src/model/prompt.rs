@@ -74,6 +74,23 @@ impl Prompt {
     pub const fn is_query(self) -> bool {
         !matches!(self, Self::Document)
     }
+
+    /// Parses an official prompt name from the frozen configuration.
+    ///
+    /// Names are case-sensitive, as in config_sentence_transformers.json.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "SearchQuery" => Some(Self::SearchQuery),
+            "Document" => Some(Self::Document),
+            "Classification" => Some(Self::Classification),
+            "Clustering" => Some(Self::Clustering),
+            "CodeRetrieval" => Some(Self::CodeRetrieval),
+            "FactChecking" => Some(Self::FactChecking),
+            "SentenceSimilarity" => Some(Self::SentenceSimilarity),
+            "QuestionAnswering" => Some(Self::QuestionAnswering),
+            _ => None,
+        }
+    }
 }
 
 /// Prepends the prompt prefix to text.
@@ -106,6 +123,18 @@ mod tests {
         assert_eq!(Prompt::Document.prefix(), DOCUMENT);
         assert!(Prompt::SearchQuery.is_query());
         assert!(!Prompt::Document.is_query());
+    }
+
+    #[test]
+    fn parses_official_prompt_names() {
+        assert_eq!(Prompt::from_name("SearchQuery"), Some(Prompt::SearchQuery));
+        assert_eq!(Prompt::from_name("Document"), Some(Prompt::Document));
+        assert_eq!(
+            Prompt::from_name("CodeRetrieval"),
+            Some(Prompt::CodeRetrieval)
+        );
+        assert_eq!(Prompt::from_name("searchquery"), None);
+        assert_eq!(Prompt::from_name("unknown"), None);
     }
 
     #[test]

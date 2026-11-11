@@ -15,3 +15,9 @@ publish = false
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# Tests run the full scalar forward pass on the frozen model. Optimizing the
+# test profile keeps the parity suite practical without changing the release
+# artifact.
+[profile.test]
+opt-level = 2

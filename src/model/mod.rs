@@ -1,8 +1,16 @@
-//! Model assets: the frozen tokenizer and the official prompt prefixes.
+//! Model assets and text inference for the frozen EmbeddingGemma 2 model.
 //!
-//! This module does not run inference yet. It provides the exact text input
-//! contract: token ids must match the official tokenizer, and prompts must be
-//! applied with the correct role.
+//! The module exposes the strict text configuration, the validated FP32 weight
+//! loader, the exact tokenizer, the official prompt prefixes, and the text
+//! encoder. Image and audio encoders are not implemented at milestone M2 and
+//! are not declared supported.
 
+pub mod config;
 pub mod prompt;
+pub mod text;
 pub mod tokenizer;
+pub mod weights;
+
+pub use config::{LayerConfig, LayerType, TextConfig};
+pub use text::{ForwardOutput, TextEmbedder, TextModel};
+pub use weights::TextWeights;
