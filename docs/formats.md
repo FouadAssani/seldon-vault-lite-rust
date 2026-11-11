@@ -1,10 +1,11 @@
 # Formats and binary primitives
 
-This document describes the formats implemented through milestone M3 and
-the validation rules that protect the product from hostile input. ADR 0002 is
-the binary format decision record, ADR 0004 covers the text-embedding numerical
-path, and ADR 0005 covers persistent storage and hybrid search; this document
-is the operational reference.
+This document describes the formats implemented through milestone M4 (image
+path started) and the validation rules that protect the product from hostile
+input. ADR 0002 is the binary format decision record, ADR 0004 covers the
+text-embedding numerical path, ADR 0005 covers persistent storage and hybrid
+search, and ADR 0007 covers native PNG/DEFLATE decoding; this document is the
+operational reference.
 
 ## Trust boundary
 
@@ -172,6 +173,51 @@ SHA-256:
 `caca3b030faeb4ded52275d54c2fca0f2ee0d6b1aeeb8ab1819e0785b1f89ca7`
 
 The fixture is not a model parity fixture. It proves format handling only.
+
+## PNG and DEFLATE
+
+Milestone M4 starts the image path with a native PNG decoder and the zlib/
+DEFLATE decoder it needs. No external image library or process is used. ADR
+0007 is the decision record; this section is the operational summary.
+
+### PNG
+
+Supported variants:
+
+- non-interlaced 8-bit samples;
+- grayscale (color type 0), RGB (2), and RGBA (6);
+- compression method 0 and filter method 0;
+- filters None, Sub, Up, Average, and Paeth.
+
+Rejected as unsupported: palette, 16-bit samples, interlacing, preset
+dictionaries, tRNS, and unknown critical chunks. Malformed lengths, CRC
+mismatches, missing IHDR/IDAT/IEND, trailing bytes, invalid filters, and
+decompressed-length mismatches are corruption errors.
+
+### Caps
+
+| Limit | Value |
+|---|---|
+| PNG file size | 64 MiB |
+| Chunk size | 32 MiB |
+| Width or height | 16,384 |
+| Pixel count | 16,777,216 |
+| Decompressed scanline bytes | 64 MiB |
+| Compressed zlib input | 64 MiB |
+
+Dimensions and expected decompressed size are checked before inflation. Every
+inflated byte is checked against the output cap.
+
+### DEFLATE
+
+The zlib decoder accepts valid CMF/FLG headers, stored, fixed-Huffman, and
+dynamic-Huffman blocks, LZ77 back-references, and an exact Adler-32 trailer.
+Truncated streams, invalid or oversubscribed Huffman tables, impossible
+distances, bad checksums, preset dictionaries, and trailing bytes are rejected.
+
+The decoder lives in src/media/deflate.rs; the PNG parser lives in
+src/media/png.rs. Fixtures and provenance are documented in
+[fixtures/media/README.md](../fixtures/media/README.md).
 
 ## Storage journal
 
