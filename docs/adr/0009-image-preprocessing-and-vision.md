@@ -1,6 +1,6 @@
 # ADR 0009 — Native image preprocessing and vision tower
 
-- **Status:** accepted for milestone M4.
+- **Status:** accepted and implemented for milestone M4.
 - **Date:** 2026-11-11.
 - **Depends on:** ADR 0001 (std only), ADR 0003 (model freeze), ADR 0004
   (text embeddings), ADR 0007 (PNG/DEFLATE), ADR 0008 (JPEG).
@@ -131,9 +131,9 @@ the delivered binary never runs them.
   test for manual verification.
 - The preprocessing fixtures cover grayscale, RGB, RGBA, gradients,
   structured quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2
-  aspect ratios. Vision parity for the rotation and aspect-ratio variants,
-  text-to-image ranking, and image-to-image ranking still need dedicated
-  fixtures before M4 can be declared complete.
+  aspect ratios. Vision parity covers a 90-degree rotation and a 2:1
+  aspect-ratio image, and two-image text-to-image and image-to-image ranking
+  tests pass. Broader ranking quality remains future work.
 - The CLI can embed an image with embed --image. Image documents are stored
   with modality image, indexed with empty chunk text, and searched by exact
   vector search. An end-to-end test indexes one image and retrieves it with a

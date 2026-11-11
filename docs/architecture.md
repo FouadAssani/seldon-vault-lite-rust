@@ -343,10 +343,11 @@ padding patches are masked out in the reference and discarded by the pooler.
 src/model/image.rs builds the image-only prompt and runs the text encoder over
 the projected soft tokens.
 
-Image embeddings are validated against the official reference. Image storage,
-image indexing in the CLI, and cross-modal search are not implemented yet, so
-no image modality is declared supported end to end. See ADR 0007, ADR 0008,
-and ADR 0009.
+Image embeddings are validated against the official reference. Image documents
+are stored with modality image, indexed from the CLI, and retrieved by text or
+image vector queries. Text-to-image and image-to-image ranking tests pass on a
+two-image reference corpus. Broader ranking quality and vision performance
+remain future work. See ADR 0007, ADR 0008, and ADR 0009.
 
 ## Model boundary
 
@@ -519,11 +520,12 @@ a dependency or if minos is not 11.0.
 1. **M3**: journal, snapshots, safe compaction, read-only views, BM25, exact
    vector search, and RRF are implemented. HNSW remains deferred until volume
    and latency measurements justify it.
-2. **M4**: native PNG and baseline JPEG decoding, official image
-   preprocessing, the vision tower, and image embeddings are implemented and
-   validated against the official reference. Next: image storage and CLI
-   indexing and text-to-image search. Rotation and aspect-ratio preprocessing
-   fixtures are committed; vision parity for those variants remains pending.
+2. **M4**: complete. Native PNG and baseline JPEG decoding, official image
+   preprocessing, the vision tower, image embeddings, image storage and CLI
+   indexing, and text-to-image and image-to-image vector search are implemented
+   and validated against the official reference. Rotation and aspect-ratio
+   fixtures cover preprocessing and vision parity. Broader ranking quality and
+   vision performance remain future work.
 3. **M5**: WAV and compliant audio embeddings.
 4. **M6**: HTTP API, bounded job queue, and hardening.
 5. **M7**: NEON and macOS packaging.

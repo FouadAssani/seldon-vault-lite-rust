@@ -4,10 +4,10 @@ use std::path::Path;
 
 use seldon_vault_lite::binary::sha256::sha256_hex;
 use seldon_vault_lite::json;
-use seldon_vault_lite::media::png;
 use seldon_vault_lite::media::preprocess::{
     PATCH_VALUES, PreprocessOptions, aspect_ratio_preserving_size, preprocess,
 };
+use seldon_vault_lite::media::{jpeg, png};
 
 fn number(value: &json::Value, key: &str) -> u64 {
     value
@@ -156,6 +156,23 @@ fn computes_the_official_aspect_ratio_preserving_size() {
     assert_eq!(
         aspect_ratio_preserving_size(100, 50, 16, 630, 3).expect("2:1"),
         (528, 240)
+    );
+}
+
+#[test]
+fn preprocesses_a_jpeg_decoded_image() {
+    let image = jpeg::decode_file(Path::new("fixtures/media/quadrants_16x16_444.jpg"))
+        .expect("JPEG fixture must decode");
+    let patches = preprocess(&image, PreprocessOptions::new(70).expect("budget"))
+        .expect("JPEG image must preprocess");
+    assert_eq!(patches.patch_grid(), (24, 24));
+    assert_eq!(patches.valid_patches(), 576);
+    assert_eq!(patches.soft_tokens(), 64);
+    assert!(
+        patches
+            .pixel_values()
+            .iter()
+            .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
     );
 }
 

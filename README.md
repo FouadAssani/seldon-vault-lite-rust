@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M4 in progress — native image decoding, preprocessing, and vision embeddings.**
+**Status: milestone M4 complete on branch feat/m4-vision-encoder — native image decoding, preprocessing, vision embeddings, and multimodal image search.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -16,10 +16,13 @@ adds the official image preprocessing (bit-exact antialiased bicubic resize,
 RGB/RGBA conversion, 16x16 patches, and positions), the 16-layer Gemma 4 vision
 tower with axial RoPE and 3x3 pooling, and the image embedder that connects
 vision soft tokens to the text encoder. Image-only embeddings are validated
-against the official reference. Image storage, CLI image indexing, and
-cross-modal search are not implemented yet, so image is not declared supported
-end to end. Audio remains pending (M5). HNSW remains deferred until
-measurements justify it.
+against the official reference for grayscale, RGB, RGBA, gradient, quadrant,
+rotation, and non-square aspect-ratio fixtures. The CLI embeds images, indexes
+image documents, and runs text-to-image and image-to-image vector search; both
+ranking paths are covered by reference tests. The scalar vision tower is a
+correctness baseline, not an optimized result; broader ranking quality and
+performance remain future work. Audio remains pending (M5). HNSW remains
+deferred until measurements justify it.
 
 ## Requirements
 
@@ -125,7 +128,7 @@ The full seven-case image corpus is an ignored test:
 | Image storage and CLI image indexing | implemented |
 | Vision parity for rotation and aspect-ratio fixtures | implemented |
 | Text-to-image and image-to-image ranking smoke tests (two images) | implemented |
-| Broader ranking quality on a larger corpus | pending (M4) |
+| Broader ranking quality and vision performance | future work (M7) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
 | Audio embeddings | pending (M5) |

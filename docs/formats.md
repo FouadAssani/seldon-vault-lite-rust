@@ -347,7 +347,10 @@ quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2 aspect ratios.
 Provenance and fingerprints are recorded in fixtures/media/README.md. The
 generator is scripts/generate_image_goldens.py and is laboratory-only.
 
-Image storage and cross-modal search are not implemented yet. See ADR 0009.
+Image documents are stored with modality image and indexed from the CLI;
+text-to-image and image-to-image vector search are implemented and covered by
+reference ranking tests. Broader ranking quality and vision performance remain
+future work. See ADR 0009.
 
 ## Storage journal
 

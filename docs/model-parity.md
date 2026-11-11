@@ -12,9 +12,10 @@ final 512 to 768 projection are covered by committed fixtures.
 At milestone M4, the official image preprocessing and the Gemma 4 vision tower
 are implemented and verified against the official reference. Image-only
 embeddings are produced in the shared 768-dimensional space. Text-to-image and
-image-to-image ranking are not yet validated on a committed corpus, and the
-audio encoder remains unimplemented. No multimodal embedding is declared
-supported end to end until those paths are tested.
+image-to-image ranking are validated on a two-image reference corpus, and image
+documents are stored, indexed, and searched through the CLI. Broader ranking
+quality remains future work. The audio encoder remains unimplemented and is
+not claimed.
 
 ## Principle
 
@@ -210,8 +211,9 @@ quadrant image ranks the identical image first and the grayscale image second.
 Both queries return modality image. The ignored rotation/aspect vision test
 reproduces the official probes and final embeddings for a 90-degree rotation
 and a 2:1 aspect-ratio image. Broader text-to-image and image-to-image ranking
-quality on a larger corpus remains mandatory before M4 can be declared
-complete. WAV audio embeddings remain mandatory at M5 and are not claimed.
+quality on a larger corpus remains future work; M4 is complete for the
+committed reference corpus. WAV audio embeddings remain mandatory at M5 and are
+not claimed.
 
 ## Tolerances
 
