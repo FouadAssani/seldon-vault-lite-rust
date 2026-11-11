@@ -1,25 +1,18 @@
 # Seldon Vault Lite
 
-Moteur local d'embeddings, d'indexation et de recherche multimodale, écrit en
-Rust `std` uniquement (aucune crate tierce), spécialisé pour
-`google/embeddinggemma-2`.
+Local multimodal embedding, indexing, and search engine, written in Rust `std` only (no third-party crates), specialized for `google/embeddinggemma-2`.
 
-**État : jalon M0 — fondations.** La CLI expose `version` et `help`. Les
-commandes `serve`, `embed`, `index`, `search` et `verify` seront
-ajoutées aux jalons suivants. Aucune modalité (texte, image, audio) n'est
-encore déclarée prise en charge : aucun résultat factice n'est renvoyé.
+**Status: milestone M0 — foundations.** The CLI exposes `version` and `help`. The `serve`, `embed`, `index`, `search`, and `verify` commands will be added in later milestones. No modality (text, image, audio) is declared supported yet: no fake result is returned.
 
-## Prérequis
+## Requirements
 
-- macOS 11 ou ultérieur sur Apple Silicon (`aarch64-apple-darwin`) ;
-- chaîne Rust stable (validée avec 1.99.1), sélectionnée par
-  `rust-toolchain.toml` avec `clippy`, `rustfmt` et la cible
-  `aarch64-apple-darwin` ;
-- aucun autre outil n'est requis pour compiler.
+- macOS 11 or later on Apple Silicon (`aarch64-apple-darwin`);
+- stable Rust toolchain (validated with 1.99.1), selected by `rust-toolchain.toml` with `clippy`, `rustfmt`, and the `aarch64-apple-darwin` target;
+- no other tool is required to build.
 
-La cible `x86_64-apple-darwin` (Mac Intel) est explicitement exclue.
+The `x86_64-apple-darwin` target (Intel Mac) is explicitly excluded.
 
-## Compiler et tester
+## Build and test
 
 ```bash
 cargo build
@@ -27,10 +20,9 @@ cargo run -- version
 cargo run -- --help
 ```
 
-## Vérification complète
+## Full verification
 
-Le script `scripts/verify.sh` exécute toute la porte de qualité. Les commandes
-équivalentes sont :
+The `scripts/verify.sh` script runs the entire quality gate. The equivalent commands are:
 
 ```bash
 cargo fmt --check
@@ -38,48 +30,45 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 cargo build --release --target aarch64-apple-darwin
 
-# Contrat « zéro crate » : seul le crate racine doit apparaître.
+# "Zero crate" contract: only the root crate must appear.
 cargo tree --edges normal,build,dev
 
-# Bibliothèques liées et cible de déploiement du Mach-O.
+# Linked libraries and Mach-O deployment target.
 otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
 vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
 ```
 
-Ou simplement :
+Or simply:
 
 ```bash
 ./scripts/verify.sh
 ```
 
-## Contrat technique
+## Technical contract
 
-- **Zéro crate tierce** : `Cargo.toml` ne contient aucune section de
-  dépendances ; seuls `std` et `core::arch` sont autorisés.
-- **Code produit 100 % Rust** : pas de C, C++, FFI, `asm!` ni bibliothèque
-  applicative dynamique.
-- **Cible initiale** : `aarch64-apple-darwin`, macOS 11.0 minimum.
-- **Données persistantes** : les données utilisateur, journaux et snapshots
-  vivront hors du binaire ; les poids ne sont pas commités.
-- **Robustesse** : aucune panique sur entrée hostile, bornes mémoire explicites,
-  arithmétique vérifiée, déterminisme du chemin scalaire FP32.
-- **CLI** : données sur `stdout`, erreurs sur `stderr` ; codes de sortie
-  `0` (succès), `1` (exécution), `2` (usage).
+- **Zero third-party crates**: `Cargo.toml` contains no dependency section; only `std` and `core::arch` are allowed.
+- **100% Rust product code**: no C, C++, FFI, `asm!`, or dynamic application library.
+- **Initial target**: `aarch64-apple-darwin`, macOS 11.0 minimum.
+- **Persistent data**: user data, logs, and snapshots will live outside the binary; weights are not committed.
+- **Robustness**: no panic on hostile input, explicit memory bounds, checked arithmetic, deterministic FP32 scalar path.
+- **CLI**: data on `stdout`, errors on `stderr`; exit codes `0` (success), `1` (execution), `2` (usage).
 
 ## Documentation
 
-- [Plan de réalisation](plan-seldon-vault-lite-rust-pur.md)
-- [ADR 0001 — Fondations](docs/adr/0001-fondations.md)
-- [Architecture (état M0)](docs/architecture.md)
-- [Parité numérique et jeux de référence](docs/model-parity.md)
-- [Politique des fixtures](fixtures/README.md)
+- [Implementation plan](seldon-vault-lite-plan.md)
+- [Agent and contributor guidelines](AGENTS.md)
+- [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
+- [Architecture (M0 state)](docs/architecture.md)
+- [Numerical parity and reference datasets](docs/model-parity.md)
+- [Fixtures policy](fixtures/README.md)
 
-## Skills Rust (DSH)
+All project documentation and code are written in English.
 
-Les skills du dépôt [actionbook/rust-skills](https://github.com/actionbook/rust-skills)
-sont installés dans `.dsh/skills/` (version 2.0.9, commit `5c40d3a`).
+## Rust skills (DSH)
 
-Mise à jour :
+The skills from the [actionbook/rust-skills](https://github.com/actionbook/rust-skills) repository are installed in `.dsh/skills/` (version 2.0.9, commit `5c40d3a`).
+
+Update:
 
 ```bash
 git clone --depth 1 https://github.com/actionbook/rust-skills.git /tmp/rust-skills
