@@ -9,8 +9,12 @@ implementation. The model is frozen at revision
 embeddings at 768/512/256/128 dimensions, intermediate layer outputs, and the
 final 512 to 768 projection are covered by committed fixtures.
 
-Image and audio encoders are not implemented and no multimodal embedding is
-claimed. The tolerances below are the values enforced by the M2 tests.
+At milestone M4, the official image preprocessing and the Gemma 4 vision tower
+are implemented and verified against the official reference. Image-only
+embeddings are produced in the shared 768-dimensional space. Text-to-image and
+image-to-image ranking are not yet validated on a committed corpus, and the
+audio encoder remains unimplemented. No multimodal embedding is declared
+supported end to end until those paths are tested.
 
 ## Principle
 
@@ -21,10 +25,17 @@ dependency, and is never launched by the delivered binary.
 Golden tests are produced outside the product, then frozen in `fixtures/` in
 compact form. The product only reads these fixtures and compares its outputs.
 
-The M2 reference runs used Python 3.13, PyTorch 2.15.0 CPU, and Transformers
-5.22.2 in float32. The model card recommends bfloat16 or float32 and forbids
-float16. The reference used float32 so that the FP32 scalar Rust path is
-compared with the closest official numerical configuration.
+The M2 and M4 reference runs used Python 3.13, PyTorch 2.15.0 CPU, and
+Transformers 5.22.2 in float32. The model card recommends bfloat16 or float32
+and forbids float16. The reference used float32 so that the FP32 scalar Rust
+path is compared with the closest official numerical configuration.
+
+The official Gemma4ImageProcessor depends on torchvision, which was not
+installed in the reference environment. The image goldens therefore reproduce
+its tensor operations directly with torch.nn.functional.interpolate (bicubic,
+antialias, align_corners false) on uint8 tensors, the float RGBA composite, and
+the documented aspect-ratio and patchification logic. The generator is
+scripts/generate_image_goldens.py; it is laboratory-only.
 
 ## Model manifest
 
@@ -69,8 +80,19 @@ At M2:
   fingerprints.
 
 PNG and baseline JPEG decoder fixtures were added at M4. They prove decoder
-behavior and corruption handling only; image embedding goldens are not yet
-available. Audio fixtures remain M5 work.
+behavior and corruption handling only.
+
+M4 also adds two reference fixtures:
+
+- fixtures/media/preprocess_golden.json records the official resized bytes,
+  padded patch values, and positions for five images at the 70 or 280 token
+  budget, with SHA-256 fingerprints;
+- fixtures/model/image_golden.json records the patch embedder probe, all 16
+  vision layer probes, the projected vision soft tokens, the input token ids,
+  and the final normalized image embedding for the same five images.
+
+The image fixtures are generated outside the product with Transformers 5.22.2
+and PyTorch 2.15.0 CPU in float32. Audio fixtures remain M5 work.
 
 ## Tokenization parity
 
@@ -116,6 +138,50 @@ The layer probe stores the scaled embedding output, all 24 layer outputs, and
 the final projected state for a short text. It lets a regression be localized
 to a layer rather than only observed in the final vector.
 
+## Image preprocessing parity
+
+The M4 preprocessing pipeline reproduces the official Gemma4 processor:
+
+- RGB conversion: grayscale replicated, RGBA composited over white with the
+  float path and half-to-even rounding;
+- aspect-ratio preserving target size, with both sides multiples of 48;
+- antialiased bicubic resize on uint8 tensors, using separable horizontal then
+  vertical passes, Keys cubic convolution with a = -0.5, per-output normalized
+  weights, and 16-bit fixed-point accumulation;
+- rescaling by 1/255;
+- 16x16 patchification in pixel-major, channel-last order;
+- padded (x, y) positions with (-1, -1) for padding.
+
+The committed preprocessing goldens compare the resized bytes, the padded
+patch values, and the positions by SHA-256. The Rust implementation matches
+them exactly for grayscale, RGB, RGBA, gradient, and quadrant fixtures at the
+70 and 280 token budgets. The 2x2 RGB case at the default budget is 768x768
+with 2,304 real patches and 256 soft tokens, so the official processor
+upscales small inputs rather than preserving their original size.
+
+## Image architecture parity
+
+The M4 vision tower reproduces the frozen gemma4_vision configuration:
+
+- patch projection over 3*16*16 values;
+- learned two-axis position embeddings, summed and zeroed for padding;
+- 16 bidirectional layers, 12 query and 12 key/value heads of dimension 64,
+  attention scale 1.0;
+- query and key RMSNorm with learned weights, unscaled value RMSNorm;
+- axial 2-D RoPE with theta 100 and the H-H-W-W layout;
+- gated GELU feed-forward with tanh approximation;
+- 3x3 average pooling, sqrt(768) scaling, RMSNorm without a scale, and the
+  768 to 512 projection;
+- the image-only prompt <bos><|image><|image|>*soft<image|><eos>, PLE from the
+  final inputs_embeds including vision features, mean pooling over every token,
+  the 512 to 768 projection, L2 normalization, and Matryoshka truncation.
+
+Only real patches are processed. The reference masks padding keys in attention
+and discards padding queries in the pooler, so compressing the padding away is
+mathematically equivalent. The image layer probe stores the patch embedder
+output and all 16 encoder layer outputs for the first real patch; the full
+tensor fingerprints remain in the fixture for manual inspection.
+
 ## Mandatory coverage
 
 Golden tests cover at least:
@@ -128,8 +194,11 @@ Golden tests cover at least:
 - intermediate layer outputs and the final projection;
 - a query and an indexed document, kept distinct by their prefixes.
 
-Image decoder coverage exists for PNG and baseline JPEG, but image embeddings
-and WAV audio embeddings remain mandatory at M4/M5 and are not claimed here.
+Image decoder coverage exists for PNG and baseline JPEG, and image embedding
+coverage exists for grayscale, RGB, RGBA, gradient, and quadrant fixtures at
+the 70 and 280 token budgets. Aspect-ratio variants, rotations, text-to-image
+ranking, and image-to-image ranking remain mandatory before M4 can be declared
+complete. WAV audio embeddings remain mandatory at M5 and are not claimed.
 
 ## Tolerances
 
@@ -137,6 +206,9 @@ and WAV audio embeddings remain mandatory at M4/M5 and are not claimed here.
 |---|---|---|
 | Token IDs | exact equality | no divergence accepted |
 | Dimensions and shapes | exact equality | no divergence accepted |
+| Preprocessing tensors | SHA-256 equality | exact bytes |
+| Vision layer probes | absolute + relative | atol <= 5e-5, rtol <= 5e-4 |
+| Image embeddings | cosine + absolute | cos >= 0.99999, atol <= 1e-4 after L2 normalization |
 | Intermediate FP32 tensors | absolute + relative | `atol <= 2e-5`, `rtol <= 1e-4` |
 | Projected FP32 states | absolute + relative | `atol <= 2e-4`, `rtol <= 1e-4` |
 | Final FP32 embeddings | cosine + absolute | `cos >= 0.9999`, `atol <= 1e-4` after L2 normalization |
@@ -146,6 +218,12 @@ and WAV audio embeddings remain mandatory at M4/M5 and are not claimed here.
 
 NaN and infinities are forbidden in expected outputs. A tolerance must never
 hide a tokenization, dimension, or prompt error.
+
+The vision layer tolerance is wider than the text layer tolerance because the
+16-layer scalar tower accumulates more rounding error, and the release build
+reorders some scalar expressions. The measured maximum divergence on the
+frozen probe is about 3.7e-4 on a large activation; the final image embedding
+remains within 1e-4 and above 0.99999 cosine in both test and release builds.
 
 The projected-state tolerance is wider than the layer tolerance because the
 512 to 768 projection accumulates 512 products and the reference matrix

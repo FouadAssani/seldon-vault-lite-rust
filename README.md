@@ -3,21 +3,23 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M4 started — native PNG, JPEG, and DEFLATE decoding.**
+**Status: milestone M4 in progress — native image decoding, preprocessing, and vision embeddings.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
 the persistent journal/snapshot store with BM25, exact vector search, RRF
 hybrid fusion, lock-free read-only views, and the CLI index, search, verify,
-and compact commands. M4 starts the image path with a native zlib/DEFLATE
-decoder, a strict PNG parser for non-interlaced 8-bit grayscale, RGB, and RGBA
-images, and a strict baseline JPEG decoder for 8-bit grayscale and
-three-component images with Huffman coding, quantization tables, restart
-intervals, and bilinear chroma upsampling. Both decoders share one validated
-decoded-image type and enforce file-size, dimension, pixel, block, MCU, and
-decoded-memory caps. Official image preprocessing, the vision encoder, and
-cross-modal search are not implemented yet; image and audio are not declared
-supported. HNSW remains deferred until measurements justify it.
+and compact commands. M4 adds a native zlib/DEFLATE decoder, a strict PNG
+parser for non-interlaced 8-bit grayscale, RGB, and RGBA images, and a strict
+baseline JPEG decoder for 8-bit grayscale and three-component images. It also
+adds the official image preprocessing (bit-exact antialiased bicubic resize,
+RGB/RGBA conversion, 16x16 patches, and positions), the 16-layer Gemma 4 vision
+tower with axial RoPE and 3x3 pooling, and the image embedder that connects
+vision soft tokens to the text encoder. Image-only embeddings are validated
+against the official reference. Image storage, CLI image indexing, and
+cross-modal search are not implemented yet, so image is not declared supported
+end to end. Audio remains pending (M5). HNSW remains deferred until
+measurements justify it.
 
 ## Requirements
 
@@ -59,7 +61,15 @@ accept a diagnostic --ids path against the tiny official model:
 
 The full-model parity test runs when .model-cache/<revision>/model.safetensors
 is present. Set SELDON_SKIP_MODEL_PARITY=1 to skip it during a quick check;
-the tiny official fixture still runs.
+the tiny official fixture still runs. The image preprocessing test always runs.
+The image embedding parity test runs when the model cache is present and is
+expensive because the scalar vision tower processes 576 patches; run it with:
+
+    cargo test --release --test image_embeddings image_embedding_matches -- --nocapture
+
+The full five-case image corpus is an ignored test:
+
+    cargo test --release --test image_embeddings -- --ignored --nocapture
 
 ## What the current milestones provide
 
@@ -93,10 +103,13 @@ the tiny official fixture still runs.
 | JPEG quantization, Huffman, entropy, restart, and marker validation | implemented |
 | JPEG dimension, pixel, MCU, block, and decoded-memory caps | implemented |
 | Shared validated decoded-image type for PNG and JPEG | implemented |
-| Official image preprocessing and vision encoder | pending (M4) |
+| Official image preprocessing with bit-exact resize and patches | implemented |
+| Vision tower, axial RoPE, 3x3 pooling, and text projection | implemented |
+| Image-only embeddings in the shared 768-dimensional space | implemented |
+| Image storage, CLI image indexing, and cross-modal search | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
-| Image and audio embeddings | pending (M4/M5) |
+| Audio embeddings | pending (M5) |
 
 ## Documentation
 
@@ -110,6 +123,7 @@ the tiny official fixture still runs.
 - [ADR 0006 — Snapshots, compaction, and read-only views](docs/adr/0006-snapshots-compaction-and-read-only-views.md)
 - [ADR 0007 — Native PNG and DEFLATE decoding](docs/adr/0007-native-png-and-deflate-decoding.md)
 - [ADR 0008 — Native baseline JPEG decoding](docs/adr/0008-native-jpeg-decoding.md)
+- [ADR 0009 — Image preprocessing and vision tower](docs/adr/0009-image-preprocessing-and-vision.md)
 - [Architecture (M4 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)

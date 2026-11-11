@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "provenance": "Generated outside the product with Python 3.13, PyTorch 2.15.0 CPU, float32, and torch.nn.functional.interpolate(mode='bicubic', antialias=True, align_corners=False) on uint8 tensors. RGBA is composited over white and rounded half to even. The official Gemma4ImageProcessor was not instantiated because torchvision is not installed in the reference environment.",
+  "cases": [
+    {
+      "name": "rgb_2x2",
+      "source": "fixtures/media/rgb_2x2.png",
+      "width": 2,
+      "height": 2,
+      "channels": 3,
+      "max_soft_tokens": 280,
+      "target_width": 768,
+      "target_height": 768,
+      "patch_grid_width": 48,
+      "patch_grid_height": 48,
+      "valid_patches": 2304,
+      "soft_tokens": 256,
+      "resized_sha256": "68c33183e01a55c4ee266a0810e537eee632f77306ffe7915a262a20e42791b1",
+      "pixel_values_sha256": "c9942b4a36beefa399deebbe542dd89c5ed7e86da2a9ea75feb3832926c6e642",
+      "positions_sha256": "934c56f857c80d9b0b401aab88a02ba083e0260b922535150e9847071e3c74bc",
+      "first_patch": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "last_patch": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        47,
+        47
+      ]
+    },
+    {
+      "name": "rgba_2x2",
+      "source": "fixtures/media/rgba_2x2.png",
+      "width": 2,
+      "height": 2,
+      "channels": 4,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "ef709924a5a899443c2e4c5ce9e35bf39396c207893ebd3eff216f742abab9af",
+      "pixel_values_sha256": "8ef8d7ea4bf926477bfbe3cdf9a6bad2f6e838ef19c122f3d2b97dc1c32d43b8",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "last_patch": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
+    },
+    {
+      "name": "gray_2x2",
+      "source": "fixtures/media/gray_2x2.png",
+      "width": 2,
+      "height": 2,
+      "channels": 1,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "977fd5019f334d9bc70073f8f11b6f2f577060a3b6dfebc1247ef1fff0602be8",
+      "pixel_values_sha256": "2b92266d744f4d0c092a8e647352f29a0d81061d1ee005e6e3612b1074f702cf",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_patch": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
+    },
+    {
+      "name": "quadrants_16x16",
+      "source": "fixtures/media/quadrants_16x16.png",
+      "width": 16,
+      "height": 16,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "ea524d353fa5c6df41f4b7e44a11f8f05b84a6e0b2b02a9293673d6c2e792605",
+      "pixel_values_sha256": "2b2e9212b082bdeb43fb6fe662917675ac9fcd2793d6950e987ac67583133533",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "last_patch": [
+        0.7176470756530762,
+        0.7176470756530762,
+        0.7176470756530762,
+        0.7215686440467834,
+        0.7215686440467834,
+        0.7215686440467834,
+        0.7215686440467834,
+        0.7215686440467834
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
+    },
+    {
+      "name": "gradient_16x16",
+      "source": "fixtures/media/gradient_16x16.png",
+      "width": 16,
+      "height": 16,
+      "channels": 3,
+      "max_soft_tokens": 70,
+      "target_width": 384,
+      "target_height": 384,
+      "patch_grid_width": 24,
+      "patch_grid_height": 24,
+      "valid_patches": 576,
+      "soft_tokens": 64,
+      "resized_sha256": "e9a1f85a7a3c107f470434b3a1e0ba69f81fb931dca0803186c136ef5a1fe491",
+      "pixel_values_sha256": "0c4168aa620c7c263a5f0aca6863249fa29ca58200ec2c3e05999d832590ae67",
+      "positions_sha256": "6303c3dc1a66ebb413637029c053a7f0f2a86c9d41f10d5dd319d96e652ece3c",
+      "first_patch": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_patch": [
+        0.9960784912109375,
+        0.9960784912109375,
+        0.9333333969116211,
+        0.9960784912109375,
+        0.9960784912109375,
+        0.9372549653053284,
+        0.9960784912109375,
+        0.9960784912109375
+      ],
+      "first_position": [
+        0,
+        0
+      ],
+      "last_position": [
+        23,
+        23
+      ]
+    }
+  ]
+}

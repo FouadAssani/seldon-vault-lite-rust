@@ -87,3 +87,39 @@ cargo build --release --target aarch64-apple-darwin
   tests are replayed.
 - M7 must compare every optimization with this baseline and with the golden
   embeddings before reporting a gain.
+
+## Image path baseline — milestone M4
+
+The image parity test measures one end-to-end image embedding with the frozen
+model in the release profile. It is a correctness baseline, not an optimized
+result.
+
+| Item | Value |
+|---|---|
+| Date | 2026-11-11 |
+| CPU | Apple M2 Pro, 10 cores |
+| Memory | 16 GiB |
+| OS | macOS 26.5.1 (build 25F80) |
+| Target | aarch64-apple-darwin |
+| Rust | rustc 1.99.1, cargo 1.99.1 |
+| Profile | release: opt-level = 3, thin LTO, one codegen unit |
+| Model | google/embeddinggemma-2 at f9972ac22e696a105c482202646979e33e4b5a1e |
+| Input | fixtures/media/quadrants_16x16.png |
+| Visual budget | 70 soft tokens |
+| Resized size | 384x384 |
+| Real patches | 576 |
+| Soft tokens | 64 |
+| Output | 768 dimensions, L2-normalized |
+| Wall time | 90.36 s |
+
+The wall time includes model loading, preprocessing, the 16-layer vision tower,
+the text encoder over 68 tokens, and the parity assertions. The scalar vision
+tower dominates: 16 layers over 576 patches with 12 heads of dimension 64 and
+a 768-to-3,072 feed-forward. The default 280-token budget produces 2,304 real
+patches, so the same scalar path is about 16 times larger and is not practical
+yet.
+
+No intra-request parallelism, batching, or SIMD is implemented at M4. M7 must
+profile the image path before optimizing, compare every change with the image
+goldens and the preprocessing fingerprints, and record CPU, compiler, model
+revision, memory, and parameters with the new numbers.

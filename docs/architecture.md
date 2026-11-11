@@ -4,9 +4,10 @@
 
 This document describes the repository organization at milestone M4 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, or ADR 0008,
-which are authoritative for foundational, format, model, text-embedding,
-storage/index, snapshot/compaction, PNG/DEFLATE, and JPEG decisions.
+ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, ADR 0008, or
+ADR 0009, which are authoritative for foundational, format, model,
+text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE, JPEG, and
+image preprocessing/vision decisions.
 
 ## Current state
 
@@ -34,11 +35,14 @@ The repository contains:
     │   ├── config.rs       # strict text configuration and tensor inventory
     │   ├── weights.rs      # validated FP32 text weight loader
     │   ├── text.rs         # EmbeddingGemma 2 text forward pass
+    │   ├── vision.rs       # strict vision configuration, weights, and tower
+    │   ├── image.rs        # image prompt, vision-to-text connection
     │   ├── prompt.rs       # official prompt prefixes
     │   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
     ├── media/
     │   ├── mod.rs
     │   ├── image.rs        # shared validated decoded-image type
+    │   ├── preprocess.rs   # official resize, RGB, patches, and positions
     │   ├── deflate.rs      # bounded zlib/DEFLATE decoder
     │   ├── png.rs          # strict PNG parser and scanline reconstruction
     │   └── jpeg.rs         # strict baseline JPEG parser and decoder
@@ -65,6 +69,8 @@ The repository contains:
     ├── cli.rs              # binary integration tests
     ├── formats.rs          # public API format/tensor integration tests
     ├── media.rs            # public API PNG/JPEG/DEFLATE integration tests
+    ├── preprocess.rs       # official image preprocessing parity tests
+    ├── image_embeddings.rs # image embedding parity tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
@@ -76,6 +82,7 @@ The repository contains:
     ├── adr/0006-snapshots-compaction-and-read-only-views.md
     ├── adr/0007-native-png-and-deflate-decoding.md
     ├── adr/0008-native-jpeg-decoding.md
+    ├── adr/0009-image-preprocessing-and-vision.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -88,12 +95,14 @@ The repository contains:
     ├── model/
     │   ├── manifest.json    # frozen revision, sizes, SHA-256, prompts
     │   ├── text_golden.json # eight text cases and a layer probe
+    │   ├── image_golden.json # image embeddings and vision layer probes
     │   └── tiny_text/       # complete 3-layer official model and golden outputs
     ├── tokenizer/
     │   ├── golden.json      # official token ids for the golden corpus
     │   └── mini_tokenizer.json # reduced tokenizer for reproducible tests
     └── media/
-        ├── README.md        # PNG/JPEG provenance, hashes, and tolerances
+        ├── README.md        # PNG/JPEG/preprocessing provenance and hashes
+        ├── preprocess_golden.json # official resize/patch/position hashes
         ├── *.png            # PNG decoder inputs
         ├── *.jpg            # JPEG decoder inputs
         └── *_ref.png        # independent reference decodes
@@ -101,14 +110,18 @@ The repository contains:
     └── model-packer/
         └── README.md       # role planned at the packaging milestone
     scripts/
-        └── verify.sh       # full milestone quality gate
+        ├── verify.sh       # full milestone quality gate
+        └── generate_image_goldens.py # laboratory-only image reference generator
 
 No api or jobs module is created empty. They will appear with their first
-testable feature, at the corresponding milestone. The media module now contains
-the native zlib/DEFLATE decoder, the PNG decoder, the baseline JPEG decoder, and
-the shared decoded-image type. Official image preprocessing and the vision
-encoder are not implemented yet. Image embeddings and audio inference are not
-claimed. Snapshots and compaction are implemented; see ADR 0006.
+testable feature, at the corresponding milestone. The media module contains the
+native zlib/DEFLATE decoder, the PNG decoder, the baseline JPEG decoder, the
+shared decoded-image type, and the official preprocessing pipeline. The model
+module contains the text encoder, the vision tower, and the image embedder that
+connects them. Image embeddings are implemented and validated against the
+official reference; image storage, image indexing, and cross-modal search are
+not yet implemented. Audio inference is not claimed. Snapshots and compaction
+are implemented; see ADR 0006.
 
 ## Layers and dependencies
 
@@ -307,9 +320,28 @@ Caps are 64 MiB per file, 16,384 per dimension,
 of decoded planes plus output.
 
 Both decoders return the shared media::Image type with interleaved 8-bit
-samples and one, three, or four channels. Official image preprocessing, the
-vision encoder, image storage, and cross-modal search are not implemented yet.
-No image modality is claimed. See ADR 0007 and ADR 0008.
+samples and one, three, or four channels.
+
+src/media/preprocess.rs implements the official Gemma4 image preprocessing:
+grayscale replication, RGBA compositing over white with half-to-even rounding,
+the aspect-ratio preserving target size, antialiased bicubic resize with the
+torchvision uint8 fixed-point path, rescaling to [0, 1], 16x16 patchification,
+and padded (x, y) positions. It is bit-exact with the reference tensor path on
+the committed fixtures. Caps are 16,384 per side, 16,777,216 input pixels,
+10,080 patches, 8,192 resize taps, and 7,741,440 padded FP32 values.
+
+src/model/vision.rs implements the Gemma 4 vision tower: patch projection,
+learned two-axis positions, 16 bidirectional layers with axial 2-D RoPE,
+grouped-query attention, RMSNorm variants, gated GELU feed-forward, 3x3
+pooling, and the 768 to 512 projection. Only real patches are processed;
+padding patches are masked out in the reference and discarded by the pooler.
+src/model/image.rs builds the image-only prompt and runs the text encoder over
+the projected soft tokens.
+
+Image embeddings are validated against the official reference. Image storage,
+image indexing in the CLI, and cross-modal search are not implemented yet, so
+no image modality is declared supported end to end. See ADR 0007, ADR 0008,
+and ADR 0009.
 
 ## Model boundary
 
@@ -336,8 +368,31 @@ embedding dimension, and 1,048,576 positions.
 model::weights::TextWeights reads the frozen Safetensors file with a 4 GiB cap,
 ignores audio and vision tensors, accepts only the 413 language_model. text
 tensors, validates every name and shape, rejects extra or missing text tensors
-and non-finite values, and converts BF16 or F32 storage to FP32 once. The
-source SHA-256 is retained for manifest comparison. The FP32 weight set is
+and non-finite values, and converts BF16 or F32 storage to FP32 once.
+
+model::vision::VisionWeights reads the same file and validates the vision
+inventory: the patch projection, the two-axis position table, four norms and
+three linears per layer, query/key norms, and the 768 to 512 embedding
+projection. Unexpected vision tensors, missing tensors, shape mismatches, and
+non-finite values are rejected. The image embedder reads the Safetensors file
+once and shares the bytes between both loaders.
+
+### Vision inference
+
+model::vision::VisionModel reproduces the frozen gemma4_vision configuration:
+patch size 16, pooling 3, hidden 768, 16 layers, 12 heads of dimension 64,
+intermediate size 3,072, axial RoPE theta 100, RMSNorm epsilon 1e-6, and GELU
+tanh. The tower rejects clipped linears, feature standardization, non-axial
+RoPE, FP16, attention bias, and non-zero dropout instead of approximating
+them.
+
+model::image::ImageEmbedder validates the special token ids against the
+tokenizer and runs the image-only prompt <bos><|image><|image|>*soft<image|><eos>.
+The vision soft tokens replace the placeholder embeddings, PLE is computed
+from the resulting inputs_embeds, and mean pooling, projection, normalization,
+and Matryoshka truncation follow the text path.
+
+The source SHA-256 is retained for manifest comparison. The FP32 weight set is
 capped at 2^30 elements.
 
 ### Tokenizer
@@ -439,8 +494,17 @@ fixtures, corrupted PNG chunk CRCs, unsupported PNG and JPEG variants,
 decompression bombs, all five PNG scanline filters, JPEG entropy and Huffman
 validation, restart intervals, Adobe APP14 color-transform validation, exact
 DC-only IDCT output, caps, and decoder comparisons against committed reference
-PNGs. The media fixtures and their
-provenance are recorded in fixtures/media/README.md.
+PNGs.
+
+The preprocessing tests compare resized bytes, padded patch values, and
+positions against SHA-256 fingerprints from the official tensor path for
+grayscale, RGB, RGBA, gradient, and quadrant fixtures. The image embedding test
+loads the frozen model when the cache is present and checks the patch embedder,
+all 16 vision layer probes, the projected soft tokens, the final 768-dimensional
+embedding (cosine and absolute tolerance), and Matryoshka truncation. The full
+five-case image corpus is an ignored test because one scalar vision pass is
+expensive. The media fixtures and their provenance are recorded in
+fixtures/media/README.md.
 
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0.
@@ -450,9 +514,10 @@ a dependency or if minos is not 11.0.
 1. **M3**: journal, snapshots, safe compaction, read-only views, BM25, exact
    vector search, and RRF are implemented. HNSW remains deferred until volume
    and latency measurements justify it.
-2. **M4**: native PNG and baseline JPEG decoding are implemented, with a
-   shared decoded-image type. Next: official image preprocessing, the vision
-   encoder, and cross-modal tests.
+2. **M4**: native PNG and baseline JPEG decoding, official image
+   preprocessing, the vision tower, and image embeddings are implemented and
+   validated against the official reference. Next: image storage and CLI
+   indexing, aspect-ratio and rotation fixtures, and text-to-image search.
 3. **M5**: WAV and compliant audio embeddings.
 4. **M6**: HTTP API, bounded job queue, and hardening.
 5. **M7**: NEON and macOS packaging.

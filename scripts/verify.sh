@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full verification for milestone M4 (image path started).
+# Full verification for milestone M4 (image path).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
@@ -12,10 +12,11 @@ SELDON_SKIP_MODEL_PARITY=1 cargo test
 
 cargo build --release --target aarch64-apple-darwin
 
-echo "--- text parity on the frozen model (optional) ---"
+echo "--- frozen-model parity (optional) ---"
 REV="f9972ac22e696a105c482202646979e33e4b5a1e"
 if [ -f ".model-cache/$REV/model.safetensors" ]; then
     cargo test --release --test text_embeddings real_model_parity -- --nocapture
+    cargo test --release --test image_embeddings image_embedding_matches -- --nocapture
 else
     echo "skipping: .model-cache/$REV/model.safetensors is not present"
 fi
@@ -39,4 +40,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M4 verification passed (image path started)."
+echo "M4 verification passed (image path)."

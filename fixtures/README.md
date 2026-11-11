@@ -3,11 +3,11 @@
 This directory contains compact, versioned fixtures used by reproducible
 tests. Model weights and multi-gigabyte files are never committed.
 
-## State at milestone M4 (started)
+## State at milestone M4 (image path)
 
-The M1/M2/M3 fixtures remain, and five PNG inputs, five JPEG files, and five
-reference PNGs have been added for the native image decoders. They are
-described in media/README.md.
+The M1/M2/M3 fixtures remain, and five PNG inputs, five JPEG files, five
+reference PNGs, and two image reference fixtures have been added. They are
+described in media/README.md and model/README.md.
 
 - `formats/mini.safetensors`: a 281-byte deterministic Safetensors file with
   F32, BF16, and zero-sized tensors. It proves format handling only; it is not
@@ -28,13 +28,20 @@ described in media/README.md.
   parameters).
 - `model/tiny_text/golden.json`: the official layer outputs and normalized
   embeddings for the tiny model.
+- `media/preprocess_golden.json`: official resized bytes, padded patch
+  values, positions, and SHA-256 fingerprints for five images at the 70 or
+  280 token budget.
+- `model/image_golden.json`: patch-embedder and 16 vision layer probes,
+  projected vision soft tokens, and the final normalized image embedding for
+  the same five images.
 
-The PNG and JPEG fixtures prove decoder behavior only; they are not official
-image preprocessing or embedding goldens. The JPEG files were generated with
-macOS sips and libjpeg-turbo cjpeg, and the reference PNGs were rendered with
-sips; these tools are laboratory-only and are never run by the product. Audio
-fixtures do not exist yet. Do not fabricate "plausible" fixtures: they must
-come from a documented reference and be verifiable.
+The PNG and JPEG inputs prove decoder behavior. The preprocessing and image
+embedding goldens come from the official reference tensor path and are
+validated by the Rust tests. The JPEG files were generated with macOS sips and
+libjpeg-turbo cjpeg, and the reference PNGs were rendered with sips; these
+tools are laboratory-only and are never run by the product. Audio fixtures do
+not exist yet. Do not fabricate "plausible" fixtures: they must come from a
+documented reference and be verifiable.
 
 ## Rules
 
@@ -58,6 +65,7 @@ fixtures/
 │   ├── README.md
 │   ├── manifest.json
 │   ├── text_golden.json
+│   ├── image_golden.json
 │   └── tiny_text/
 │       ├── config.json
 │       ├── golden.json
@@ -68,6 +76,7 @@ fixtures/
 │   └── mini_tokenizer.json
 ├── media/
 │   ├── README.md
+│   ├── preprocess_golden.json
 │   ├── rgb_2x2.png
 │   ├── rgba_2x2.png
 │   ├── gray_2x2.png
@@ -97,6 +106,8 @@ fixtures/
 | `model/tiny_text/config.json` | `8aa35d31bdee5f1ff3284d3ed08b64377c1e4675a471d7f2d89ef4a89a9566f1` |
 | `model/tiny_text/model.safetensors` | `2daec622d6d3be44a339158678939f9b739a3b21c8be1dce8f6f7c38fb90caa6` |
 | `model/tiny_text/golden.json` | `28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94` |
+| `model/image_golden.json` | `7b21c34b485553519dab0caba959f70cc4e5660c6ca0d5ebf163cf0fc612db4c` |
+| `media/preprocess_golden.json` | `5d1636db713eabb338e6d11a347f4679dca83224fd8ad9f96ff9a32a62c20d52` |
 | `media/rgb_2x2.png` | `edbfc60195995fc33f65a2d3cfaa65fffa3c0c68246af114c7076fec71e12c89` |
 | `media/rgba_2x2.png` | `fa6cf6c3de0c8a91ab7bb255e4b7b77d2397cd4f21732b7168dd6ec375bd0db8` |
 | `media/gray_2x2.png` | `e1777c3fabfd5ed4697f373347c367393cc219b80c7d6e4c609a41afb24be198` |

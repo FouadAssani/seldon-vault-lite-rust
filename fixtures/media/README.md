@@ -101,3 +101,53 @@ committed PNG/PPM inputs with the documented sips or cjpeg invocation, and the
 reference PNG must be rendered by an independent decoder. Corrupted variants
 are generated inside Rust tests by truncating or mutating these files; they are
 not committed.
+
+## Image preprocessing goldens
+
+fixtures/media/preprocess_golden.json records the official preprocessing output
+for five images. It is committed because the reference path is expensive to
+reproduce and because the Rust tests enforce exact equality.
+
+### Provenance
+
+Generated outside the product on 2026-11-11 with Python 3.13, PyTorch 2.15.0
+CPU, and Transformers 5.22.2 in float32, using
+scripts/generate_image_goldens.py. The official Gemma4ImageProcessor depends
+on torchvision, which was not installed in the reference environment, so the
+generator reproduces the same tensor operations directly:
+
+- grayscale replication and RGBA compositing over white with half-to-even
+  rounding;
+- aspect-ratio preserving target size;
+- torch.nn.functional.interpolate with mode bicubic, antialias true, and
+  align_corners false on uint8 tensors;
+- rescaling by 1/255, patchification, and padded positions.
+
+### Cases
+
+| Name | Source | Budget | Target | Patches | Soft tokens |
+|---|---|---|---|---|---|
+| rgb_2x2 | fixtures/media/rgb_2x2.png | 280 | 768x768 | 2304 | 256 |
+| rgba_2x2 | fixtures/media/rgba_2x2.png | 70 | 384x384 | 576 | 64 |
+| gray_2x2 | fixtures/media/gray_2x2.png | 70 | 384x384 | 576 | 64 |
+| quadrants_16x16 | fixtures/media/quadrants_16x16.png | 70 | 384x384 | 576 | 64 |
+| gradient_16x16 | fixtures/media/gradient_16x16.png | 70 | 384x384 | 576 | 64 |
+
+Each case records the resized size, patch grid, valid patch count, soft-token
+count, SHA-256 of the resized uint8 bytes, SHA-256 of the padded FP32 patch
+values, SHA-256 of the padded int64 positions, selected first and last patch
+values, and first and last positions.
+
+### Fingerprint
+
+| File | Size | SHA-256 |
+|---|---|---|
+| preprocess_golden.json | 5725 | 5d1636db713eabb338e6d11a347f4679dca83224fd8ad9f96ff9a32a62c20d52 |
+
+### Regeneration contract
+
+The generator must be run only outside the product, with the frozen model cache
+and the reference environment. A replacement fixture must record the same
+fields, the generator version, the PyTorch and Transformers versions, and the
+new SHA-256. The Rust tests compare resized bytes, padded patch values, and
+positions exactly; no tolerance is accepted for preprocessing.

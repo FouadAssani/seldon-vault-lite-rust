@@ -240,6 +240,20 @@
       "schema_version": 2,
       "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, explicit layer loop"
     },
+    "preprocess_golden": {
+      "path": "fixtures/media/preprocess_golden.json",
+      "sha256": "5d1636db713eabb338e6d11a347f4679dca83224fd8ad9f96ff9a32a62c20d52",
+      "size": 5725,
+      "schema_version": 1,
+      "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32; torch.nn.functional.interpolate bicubic antialias"
+    },
+    "image_golden": {
+      "path": "fixtures/model/image_golden.json",
+      "sha256": "7b21c34b485553519dab0caba959f70cc4e5660c6ca0d5ebf163cf0fc612db4c",
+      "size": 157888,
+      "schema_version": 1,
+      "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, official vision tower and text encoder"
+    },
     "tiny_text": {
       "directory": "fixtures/model/tiny_text",
       "config": {
@@ -266,6 +280,8 @@
     "mini_tokenizer.json is a reduced fixture that reproduces the full tokenizer on the golden corpus; it is not a general tokenizer.",
     "M2 text fixtures were generated with Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32.",
     "The tiny_text fixture is a complete 3-layer official-code model with 10,315 parameters; it is not a reduced real checkpoint.",
-    "M2 claims text embeddings only. Image, video, and audio are not implemented."
+    "M4 adds official image preprocessing, the vision tower, and image-only embeddings; image storage and cross-modal search are not implemented.",
+    "Image fixtures were generated with Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32; torchvision was not installed, so the processor tensor operations were reproduced directly.",
+    "Text embeddings and image embeddings are implemented; video and audio are not implemented."
   ]
 }
