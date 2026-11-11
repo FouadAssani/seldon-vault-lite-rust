@@ -24,6 +24,15 @@ ranking are validated on a six-clip reference corpus, and audio documents are
 stored, indexed, and searched through the CLI. MP3, streaming audio, and broader
 audio ranking quality remain future work and are not claimed.
 
+At milestone M7, runtime-selected NEON kernels were added for the shared
+kernels, with differential scalar-vs-NEON tests and a replay of the frozen text,
+image, and audio parity suites. No tolerance was relaxed.
+
+At milestone M8, the numerical paths are unchanged. The release validation
+replays the frozen parity suites and runs the sanitized lifecycle harness; it
+does not introduce a new numerical claim. The release documentation records the
+same tolerances and the same frozen model revision.
+
 ## Principle
 
 The official `google/embeddinggemma-2` implementation serves as a reference

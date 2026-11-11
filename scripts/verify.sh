@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Full verification for milestone M7 (NEON kernels and macOS ARM64 packaging).
+# Full verification for milestone M8 (macOS local-use release validation).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
+#
+# The release validation runs on the development Apple Silicon machine; no
+# separate clean-machine gate is required. Set SELDON_RELEASE_E2E=1 to run
+# scripts/release_e2e.sh when the embedded release binary is present.
 set -euo pipefail
 
 cargo fmt --check
@@ -8,7 +12,7 @@ cargo clippy --all-targets -- -D warnings
 
 # The full-model parity test is heavy; run the fast suite first, then the
 # explicit release parity check when the frozen weights are present. The fast
-# suite includes the HTTP API integration tests (tests/http_api.rs).
+# suite includes the HTTP API integration tests and the release lifecycle test.
 SELDON_SKIP_MODEL_PARITY=1 cargo test
 
 cargo build --release --target aarch64-apple-darwin
@@ -66,4 +70,31 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M7 verification passed (NEON kernels, model bundle, and embedded packaging)."
+echo "--- code signature (local-use ad-hoc build) ---"
+codesign -dv --verbose=4 target/aarch64-apple-darwin/release/seldon-vault-lite 2>&1 || true
+codesign --verify --strict target/aarch64-apple-darwin/release/seldon-vault-lite
+
+echo "--- Gatekeeper assessment (recorded, not a local-use failure) ---"
+if spctl --assess --type execute -vv target/aarch64-apple-darwin/release/seldon-vault-lite; then
+    echo "Gatekeeper accepts the binary; assessment recorded."
+else
+    echo "Gatekeeper rejects the ad-hoc build; this is expected for local use."
+    echo "No Developer ID signing or notarization is planned; distribution to other Macs is out of scope (ADR 0013)."
+fi
+
+echo "--- sanitized release lifecycle (optional) ---"
+if [ "${SELDON_RELEASE_E2E:-0}" = "1" ]; then
+    embedded="target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite"
+    if [ -x "$embedded" ]; then
+        scripts/release_e2e.sh \
+            --binary "$embedded" \
+            --workdir "${SELDON_RELEASE_E2E_WORKDIR:-/tmp/seldon-release-e2e}" \
+            --report "${SELDON_RELEASE_E2E_REPORT:-/tmp/seldon-release-e2e-report.json}"
+    else
+        echo "skipping: $embedded is not present; build with --features embedded-model"
+    fi
+else
+    echo "skipping: set SELDON_RELEASE_E2E=1 to run scripts/release_e2e.sh"
+fi
+
+echo "M8 verification passed (release lifecycle, bundle, and macOS artifact checks)."

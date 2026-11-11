@@ -1,9 +1,12 @@
-# HTTP API — milestone M6
+# HTTP API — milestone M6, current at M8
 
-**Status:** implemented on branch `feat/m6-http-api`. The service is a native
-`std::net::TcpListener` HTTP/1.1 server with a strict parser, bounded
-connections, a bounded ingestion queue, and no third-party crate. It is a local
-service, not an Internet-facing gateway.
+**Status:** implemented on branch `feat/m6-http-api` and unchanged at M8. The
+service is a native `std::net::TcpListener` HTTP/1.1 server with a strict
+parser, bounded connections, a bounded ingestion queue, and no third-party
+crate. It is a local service, not an Internet-facing gateway. The M8 release
+harness exercises the loopback health, ready, models, embeddings, ingestion,
+search, deletion, and shutdown lifecycle and verifies that documents survive a
+restart.
 
 ## Bind, authentication, and transport
 

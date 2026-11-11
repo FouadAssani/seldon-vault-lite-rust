@@ -3,11 +3,13 @@
 This directory contains compact, versioned fixtures used by reproducible
 tests. Model weights and multi-gigabyte files are never committed.
 
-## State at milestone M5 (audio path)
+## State at milestone M8 (release validation)
 
 The M1/M2/M3/M4 fixtures remain, and six WAV excerpts, three conversion WAVs,
 one audio preprocessing golden, and one audio embedding golden have been added.
-They are described in media/README.md and model/README.md.
+The M8 release harness reuses the committed media fixtures; no new fixture is
+required for the clean-environment lifecycle. Fixtures are described in
+media/README.md and model/README.md.
 
 - `formats/mini.safetensors`: a 281-byte deterministic Safetensors file with
   F32, BF16, and zero-sized tensors. It proves format handling only; it is not
