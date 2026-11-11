@@ -19,6 +19,7 @@ if [ -f ".model-cache/$REV/model.safetensors" ]; then
     cargo test --release --test image_embeddings image_embedding_matches -- --nocapture
     cargo test --release --test cli indexes_an_image -- --ignored --nocapture
     cargo test --release --test cli text_and_image_queries_rank_image_documents -- --ignored --nocapture
+    cargo test --release --test image_embeddings rotation_and_aspect_vision_parity -- --ignored --nocapture
 else
     echo "skipping: .model-cache/$REV/model.safetensors is not present"
 fi

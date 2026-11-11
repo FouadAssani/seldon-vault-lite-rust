@@ -126,8 +126,9 @@ the delivered binary never runs them.
 
 - The default image parity test is expensive because the official processor
   upscales a tiny image to 576 patches at the 70-token budget and the scalar
-  tower runs 16 layers. The default suite covers one full case; the five-case
-  corpus is an ignored test for manual verification.
+  tower runs 16 layers. The default suite covers one full case; the seven-case
+  corpus, including a rotation and a non-square aspect ratio, is an ignored
+  test for manual verification.
 - The preprocessing fixtures cover grayscale, RGB, RGBA, gradients,
   structured quadrants, 90-degree and 180-degree rotations, and 2:1 and 1:2
   aspect ratios. Vision parity for the rotation and aspect-ratio variants,
@@ -139,6 +140,8 @@ the delivered binary never runs them.
   text query. A two-image ranking test ranks a colorful quadrant image above a
   grayscale image for the text query "a colorful four-quadrant test pattern";
   an image query with the quadrant image ranks the identical image first and
-  the grayscale image second. Broader ranking quality remains pending. No
+  the grayscale image second. The ignored rotation/aspect vision test
+  reproduces the official probes and final embeddings for a 90-degree rotation
+  and a 2:1 aspect-ratio image. Broader ranking quality remains pending. No
   image modality is declared supported end to end until those paths are
   tested.

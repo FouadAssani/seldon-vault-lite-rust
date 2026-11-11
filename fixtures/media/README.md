@@ -118,7 +118,7 @@ not committed.
 ## Image preprocessing goldens
 
 fixtures/media/preprocess_golden.json records the official preprocessing output
-for five images. It is committed because the reference path is expensive to
+for nine images. It is committed because the reference path is expensive to
 reproduce and because the Rust tests enforce exact equality.
 
 ### Provenance

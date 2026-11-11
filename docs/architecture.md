@@ -507,7 +507,7 @@ grayscale, RGB, RGBA, gradient, and quadrant fixtures. The image embedding test
 loads the frozen model when the cache is present and checks the patch embedder,
 all 16 vision layer probes, the projected soft tokens, the final 768-dimensional
 embedding (cosine and absolute tolerance), and Matryoshka truncation. The full
-five-case image corpus is an ignored test because one scalar vision pass is
+seven-case image corpus is an ignored test because one scalar vision pass is
 expensive. The media fixtures and their provenance are recorded in
 fixtures/media/README.md.
 

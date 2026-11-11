@@ -3,7 +3,7 @@
 //! The full image path is expensive: the official preprocessing upscales a
 //! small image to 576 patches at the 70-token budget, and the scalar vision
 //! tower then runs 16 layers. The default test covers one reference case; the
-//! complete five-case corpus is available as an ignored test for manual
+//! complete seven-case corpus is available as an ignored test for manual
 //! verification. Preprocessing itself is covered by tests/preprocess.rs.
 
 use std::path::Path;
@@ -231,7 +231,28 @@ fn image_embedding_matches_the_official_reference() {
 }
 
 #[test]
-#[ignore = "full five-case image parity run; execute manually"]
+#[ignore = "vision parity for the rotation and aspect-ratio cases"]
+fn rotation_and_aspect_vision_parity() {
+    let Some(cache) = model_cache() else {
+        return;
+    };
+    let embedder = load_embedder(cache);
+    let golden = json::parse(IMAGE_GOLDEN).expect("image golden fixture must parse");
+    let cases = golden
+        .get("cases")
+        .and_then(Value::as_array)
+        .expect("image golden cases");
+    for name in ["wide_32x16", "quadrants_16x16_rot90"] {
+        let case = cases
+            .iter()
+            .find(|case| string(case, "name") == name)
+            .unwrap_or_else(|| panic!("missing reference case {name}"));
+        run_case(&embedder, case);
+    }
+}
+
+#[test]
+#[ignore = "full seven-case image parity run; execute manually"]
 fn all_image_embeddings_match_the_official_reference() {
     let Some(cache) = model_cache() else {
         return;

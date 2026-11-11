@@ -186,14 +186,17 @@ CASES = [
 ]
 
 # The vision tower is expensive in the scalar reference environment. The
-# committed image embedding fixture covers the original five cases; the
-# rotation and aspect-ratio cases exercise preprocessing only.
+# committed image embedding fixture covers seven cases, including one rotation
+# and one non-square aspect ratio; the other preprocessing cases exercise
+# resize, patchification, and positions only.
 VISION_CASES = {
     "rgb_2x2",
     "rgba_2x2",
     "gray_2x2",
     "quadrants_16x16",
     "gradient_16x16",
+    "wide_32x16",
+    "quadrants_16x16_rot90",
 }
 
 

@@ -29,11 +29,11 @@ described in media/README.md and model/README.md.
 - `model/tiny_text/golden.json`: the official layer outputs and normalized
   embeddings for the tiny model.
 - `media/preprocess_golden.json`: official resized bytes, padded patch
-  values, positions, and SHA-256 fingerprints for five images at the 70 or
-  280 token budget.
+  values, positions, and SHA-256 fingerprints for nine images at the 70 or
+  280 token budget, including rotations and non-square aspect ratios.
 - `model/image_golden.json`: patch-embedder and 16 vision layer probes,
   projected vision soft tokens, and the final normalized image embedding for
-  the same five images.
+  seven images, including a rotation and a non-square aspect ratio.
 
 The PNG and JPEG inputs prove decoder behavior. The preprocessing and image
 embedding goldens come from the official reference tensor path and are
@@ -110,7 +110,7 @@ fixtures/
 | `model/tiny_text/config.json` | `8aa35d31bdee5f1ff3284d3ed08b64377c1e4675a471d7f2d89ef4a89a9566f1` |
 | `model/tiny_text/model.safetensors` | `2daec622d6d3be44a339158678939f9b739a3b21c8be1dce8f6f7c38fb90caa6` |
 | `model/tiny_text/golden.json` | `28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94` |
-| `model/image_golden.json` | `7b21c34b485553519dab0caba959f70cc4e5660c6ca0d5ebf163cf0fc612db4c` |
+| `model/image_golden.json` | `f7aa04357c0b8a3393d83958f88901b3b6b29d77f2ef2499568a4fd8970a8482` |
 | `media/preprocess_golden.json` | `5f4d8628d7d4dd7c173b0a33bc67315db929955be70fb0ac56b876b3be84c98c` |
 | `media/rgb_2x2.png` | `edbfc60195995fc33f65a2d3cfaa65fffa3c0c68246af114c7076fec71e12c89` |
 | `media/rgba_2x2.png` | `fa6cf6c3de0c8a91ab7bb255e4b7b77d2397cd4f21732b7168dd6ec375bd0db8` |

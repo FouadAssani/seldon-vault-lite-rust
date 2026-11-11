@@ -90,7 +90,8 @@ M4 also adds two reference fixtures:
   fingerprints;
 - fixtures/model/image_golden.json records the patch embedder probe, all 16
   vision layer probes, the projected vision soft tokens, the input token ids,
-  and the final normalized image embedding for the same five images.
+  and the final normalized image embedding for seven images, including a
+  rotation and a non-square aspect ratio.
 
 The image fixtures are generated outside the product with Transformers 5.22.2
 and PyTorch 2.15.0 CPU in float32. Audio fixtures remain M5 work.
@@ -198,18 +199,19 @@ Golden tests cover at least:
 Image decoder coverage exists for PNG and baseline JPEG. Image preprocessing
 coverage exists for grayscale, RGB, RGBA, gradient, quadrant, rotation, and
 non-square aspect-ratio fixtures at the 70 and 280 token budgets. Image
-embedding coverage exists for the five original fixtures at the 70 and 280
-token budgets. The CLI index and vector-search path is exercised end to end
+embedding coverage exists for seven fixtures at the 70 and 280 token budgets,
+including a 90-degree rotation and a 2:1 aspect ratio. The CLI index and vector-search path is exercised end to end
 with one indexed image and a text query: the image document is stored with
 modality image, found by exact vector search, and returned with its source.
 A two-image ranking test indexes a colorful quadrant image and a grayscale
 image. The text query "a colorful four-quadrant test pattern" ranks the
 quadrant image first and the grayscale image second. An image query with the
 quadrant image ranks the identical image first and the grayscale image second.
-Both queries return modality image. Vision parity for rotations and
-aspect-ratio variants and broader text-to-image and image-to-image ranking
-quality remain mandatory before M4 can be declared complete. WAV audio
-embeddings remain mandatory at M5 and are not claimed.
+Both queries return modality image. The ignored rotation/aspect vision test
+reproduces the official probes and final embeddings for a 90-degree rotation
+and a 2:1 aspect-ratio image. Broader text-to-image and image-to-image ranking
+quality on a larger corpus remains mandatory before M4 can be declared
+complete. WAV audio embeddings remain mandatory at M5 and are not claimed.
 
 ## Tolerances
 

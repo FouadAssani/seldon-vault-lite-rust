@@ -249,8 +249,8 @@
     },
     "image_golden": {
       "path": "fixtures/model/image_golden.json",
-      "sha256": "7b21c34b485553519dab0caba959f70cc4e5660c6ca0d5ebf163cf0fc612db4c",
-      "size": 157888,
+      "sha256": "f7aa04357c0b8a3393d83958f88901b3b6b29d77f2ef2499568a4fd8970a8482",
+      "size": 219568,
       "schema_version": 1,
       "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, official vision tower and text encoder"
     },

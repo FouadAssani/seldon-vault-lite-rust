@@ -82,7 +82,7 @@ expensive because the scalar vision tower processes 576 patches; run it with:
 
     cargo test --release --test image_embeddings image_embedding_matches -- --nocapture
 
-The full five-case image corpus is an ignored test:
+The full seven-case image corpus is an ignored test:
 
     cargo test --release --test image_embeddings -- --ignored --nocapture
 
@@ -123,6 +123,7 @@ The full five-case image corpus is an ignored test:
 | Vision tower, axial RoPE, 3x3 pooling, and text projection | implemented |
 | Image-only embeddings in the shared 768-dimensional space | implemented |
 | Image storage and CLI image indexing | implemented |
+| Vision parity for rotation and aspect-ratio fixtures | implemented |
 | Text-to-image and image-to-image ranking smoke tests (two images) | implemented |
 | Broader ranking quality on a larger corpus | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
