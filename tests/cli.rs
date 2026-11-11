@@ -239,6 +239,76 @@ fn indexes_an_image_and_finds_it_with_a_text_query() {
 }
 
 #[test]
+#[ignore = "loads the full multimodal model and embeds two images with the scalar vision tower"]
+fn text_query_ranks_image_documents() {
+    use std::fs;
+
+    let unique = format!(
+        "seldon-image-rank-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(unique);
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create temp dir");
+    let jsonl = dir.join("images.jsonl");
+    fs::write(
+        &jsonl,
+        "{\"id\":\"img-quadrants\",\"image\":\"fixtures/media/quadrants_16x16.png\"}\n         {\"id\":\"img-gray\",\"image\":\"fixtures/media/gray_2x2.png\"}\n",
+    )
+    .expect("write JSONL");
+    let data_dir = dir.join("data");
+
+    let output = run(&[
+        "index",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--vision-tokens",
+        "70",
+        jsonl.to_str().expect("UTF-8 path"),
+    ]);
+    assert!(output.status.success(), "index stderr: {}", stderr(&output));
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        data_dir.to_str().expect("UTF-8 path"),
+        "--mode",
+        "vector",
+        "--dim",
+        "768",
+        "a colorful four-quadrant test pattern",
+    ]);
+    assert!(
+        output.status.success(),
+        "search stderr: {}",
+        stderr(&output)
+    );
+    let result =
+        seldon_vault_lite::json::parse(stdout(&output).trim()).expect("search result must be JSON");
+    let hits = result.as_array().expect("search output is a hits array");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].get("document_id").and_then(|value| value.as_str()),
+        Some("img-quadrants"),
+        "the colorful quadrant image must rank first"
+    );
+    assert_eq!(
+        hits[1].get("document_id").and_then(|value| value.as_str()),
+        Some("img-gray")
+    );
+    assert_eq!(
+        hits[0].get("modality").and_then(|value| value.as_str()),
+        Some("image")
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn embed_rejects_an_unknown_image_extension() {
     let output = run(&["embed", "--image", "fixtures/media/README.md"]);
     assert_eq!(output.status.code(), Some(2));

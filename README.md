@@ -123,7 +123,8 @@ The full five-case image corpus is an ignored test:
 | Vision tower, axial RoPE, 3x3 pooling, and text projection | implemented |
 | Image-only embeddings in the shared 768-dimensional space | implemented |
 | Image storage and CLI image indexing | implemented |
-| Text-to-image ranking quality and image-to-image ranking | pending (M4) |
+| Text-to-image ranking smoke test (two images) | implemented |
+| Broader text-to-image ranking quality and image-to-image ranking | pending (M4) |
 | HNSW approximate vector index | deferred until measurements |
 | HTTP API, jobs, and ingestion queue | pending (M6) |
 | Audio embeddings | pending (M5) |

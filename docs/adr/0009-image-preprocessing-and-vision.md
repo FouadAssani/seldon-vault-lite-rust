@@ -135,7 +135,9 @@ the delivered binary never runs them.
   fixtures before M4 can be declared complete.
 - The CLI can embed an image with embed --image. Image documents are stored
   with modality image, indexed with empty chunk text, and searched by exact
-  vector search; an end-to-end test indexes one image and retrieves it with a
-  text query. Text-to-image ranking quality and image-to-image ranking remain
+  vector search. An end-to-end test indexes one image and retrieves it with a
+  text query. A two-image ranking test ranks a colorful quadrant image above a
+  grayscale image for the query "a colorful four-quadrant test pattern".
+  Broader text-to-image ranking quality and image-to-image ranking remain
   pending. No image modality is declared supported end to end until those
   paths are tested.
