@@ -132,8 +132,8 @@ pub fn sha256_hex(data: &[u8]) -> String {
 /// SHA-256 compression function for one 64-byte block.
 fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut words = [0u32; 64];
-    for (index, chunk) in block.chunks_exact(4).enumerate() {
-        words[index] = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    for (index, chunk) in block.as_chunks::<4>().0.iter().enumerate() {
+        words[index] = u32::from_be_bytes(*chunk);
     }
     for index in 16..64 {
         let sigma0 = words[index - 15].rotate_right(7)

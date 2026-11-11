@@ -1,24 +1,43 @@
 //! Argument parsing and command execution for the CLI.
 //!
-//! M2 adds the `embed` command. It loads the frozen text model from a model
-//! directory and prints one JSON vector. Text input is tokenized with the
-//! official prompt prefix; token ids can also be supplied directly for
-//! diagnostics and tests. No stub simulates a modality that is not
-//! implemented.
+//! M2 added the embed command. M3 adds index, search, and verify:
+//!
+//! - index ingests a strict JSONL document file into the persistent store;
+//! - search runs BM25, exact vector search, or RRF hybrid ranking;
+//! - verify decodes the committed journal prefix without modifying it.
+//!
+//! Text embedding uses the frozen model tokenizer and official Document or
+//! SearchQuery prompt. A diagnostic --ids option bypasses the tokenizer for
+//! reproducible tests against the tiny official model; it never fakes an
+//! embedding.
 
+use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use crate::binary::reader::read_file_bounded;
 use crate::error::{Error, Result};
+use crate::index::{Filters, Index, SearchHit, SearchMode, SearchRequest};
+use crate::json::{self, Number, Object, Value};
 use crate::model::prompt::Prompt;
 use crate::model::text::{TextEmbedder, TextModel};
+use crate::storage::model::{ChunkInput, Document, DocumentId, Metadata, Modality};
+use crate::storage::{ReadOnlyStore, Store};
 use crate::{MODEL_CACHE_DIR, MODEL_REVISION, PROGRAM_NAME, TARGET_TRIPLE, VERSION};
 
-/// Maximum number of bytes read from standard input by `embed`.
+/// Maximum number of bytes read from standard input.
 const MAX_STDIN_BYTES: usize = 1024 * 1024;
+/// Maximum size of an index JSONL file.
+const MAX_INDEX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+/// Maximum size of one JSONL document line.
+const MAX_INDEX_LINE_BYTES: usize = 1024 * 1024;
+/// Maximum number of documents ingested by one index invocation.
+const MAX_INDEX_DOCUMENTS: usize = 10_000;
+/// Maximum number of diagnostic token ids accepted by one command.
+const MAX_IDS: usize = 8192;
 
-/// Help text displayed by the `help` command.
+/// Help text displayed by the help command.
 const HELP: &str = concat!(
     env!("CARGO_PKG_NAME"),
     r#" — local multimodal embedding and search engine
@@ -30,6 +49,10 @@ USAGE:
 
 COMMANDS:
     embed      Embeds text or token ids and prints a JSON vector
+    index      Ingests JSONL documents into the persistent store
+    search     Runs hybrid, lexical, or exact vector search
+    verify     Verifies a data directory without modifying it
+    compact    Materializes a snapshot and replaces the journal
     version    Prints the version and build target
     help       Prints this help
 
@@ -47,17 +70,63 @@ EMBED:
                   spaces, and if no text is given standard input is read
     --ids         Comma-separated token ids; bypasses the tokenizer
 
+INDEX:
+    index --data-dir <DIR> [--model-dir <DIR>] [--dim <N>] [--ids]
+          <FILE|->
+
+    --data-dir    Data directory holding the journal and writer lock
+    --model-dir   Model directory (default: .model-cache/<revision>)
+    --dim         Embedding dimension (default: 768)
+    --ids         Diagnostic mode: JSONL lines carry an ids array used
+                  instead of tokenizing text; text is still stored for BM25
+
+    Each JSONL line is an object with id, text, optional title, optional
+    source, and optional metadata object. Blank lines are ignored. Duplicate
+    ids and unknown fields are rejected before any write.
+
+SEARCH:
+    search --data-dir <DIR> [--model-dir <DIR>] [--dim <N>]
+           [--mode hybrid|lexical|vector] [--limit <N>] [--offset <N>]
+           [--filter KEY=VALUE]... [--ids <ID,ID,...>] [QUERY...]
+
+    --data-dir    Data directory holding the journal and writer lock
+    --model-dir   Model directory (default: .model-cache/<revision>)
+    --dim         Query embedding dimension (default: 768)
+    --mode        hybrid (default), lexical (BM25 only), or vector
+    --limit       Maximum hits, from 1 to 1000 (default: 10)
+    --offset      Number of ranked hits to skip (default: 0)
+    --filter      Exact metadata equality filter; repeatable
+    --ids         Diagnostic query ids for vector or hybrid mode
+
+    QUERY is joined with spaces; with no query, standard input is read with
+    a 1 MiB cap. Lexical mode does not load the model.
+
+VERIFY:
+    verify --data-dir <DIR>
+
+    Decodes and validates the committed snapshot and journal prefix, reporting
+    records, snapshot records, documents, chunks, and any uncommitted trailing
+    bytes. Neither file is modified.
+
+COMPACT:
+    compact --data-dir <DIR>
+
+    Materializes the current documents and chunks into snapshot.sv, then
+    replaces journal.log with an empty file. The snapshot is written and
+    synchronized before the journal is replaced, so a crash leaves a
+    recoverable state.
+
 OPTIONS:
-    -V, --version    Equivalent to `version`
-    -h, --help       Equivalent to `help`
+    -V, --version    Equivalent to version
+    -h, --help       Equivalent to help
 
 EXIT CODES:
     0    success
     1    execution error
     2    usage error
 
-The `serve`, `index`, `search`, and `verify` commands will be added
-with milestones M3 to M6. No command is simulated in the meantime.
+The serve command will be added with milestone M6. No command is simulated
+in the meantime.
 "#
 );
 
@@ -70,9 +139,17 @@ pub enum Command {
     Help,
     /// Embeds text or token ids.
     Embed(EmbedArgs),
+    /// Ingests JSONL documents.
+    Index(IndexArgs),
+    /// Runs a search.
+    Search(SearchArgs),
+    /// Verifies a data directory.
+    Verify(VerifyArgs),
+    /// Materializes a snapshot and compacts the journal.
+    Compact(CompactArgs),
 }
 
-/// Arguments of the `embed` command.
+/// Arguments of the embed command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbedArgs {
     /// Directory containing config.json and model.safetensors, and for text
@@ -86,7 +163,7 @@ pub struct EmbedArgs {
     pub input: EmbedInput,
 }
 
-/// Input source of the `embed` command.
+/// Input source of the embed command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmbedInput {
     /// Raw text, prefixed with the official prompt before tokenization.
@@ -95,6 +172,67 @@ pub enum EmbedInput {
     Ids(Vec<u32>),
     /// Text read from standard input.
     Stdin,
+}
+
+/// Arguments of the index command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexArgs {
+    /// Data directory.
+    pub data_dir: PathBuf,
+    /// Model directory.
+    pub model_dir: PathBuf,
+    /// Embedding dimension.
+    pub dimension: usize,
+    /// JSONL file, or - for standard input.
+    pub input: PathBuf,
+    /// Diagnostic mode that uses an ids array instead of the tokenizer.
+    pub ids_mode: bool,
+}
+
+/// Arguments of the search command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchArgs {
+    /// Data directory.
+    pub data_dir: PathBuf,
+    /// Model directory, used by vector and hybrid modes.
+    pub model_dir: PathBuf,
+    /// Query embedding dimension.
+    pub dimension: usize,
+    /// Ranking strategy.
+    pub mode: SearchMode,
+    /// Maximum number of hits.
+    pub limit: usize,
+    /// Pagination offset.
+    pub offset: usize,
+    /// Modality and metadata filters.
+    pub filters: Filters,
+    /// Query text or standard input.
+    pub input: SearchInput,
+    /// Diagnostic query token ids for vector or hybrid mode.
+    pub ids: Option<Vec<u32>>,
+}
+
+/// Query source of the search command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchInput {
+    /// Query text from positional arguments.
+    Text(String),
+    /// Query text read from standard input.
+    Stdin,
+}
+
+/// Arguments of the verify command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyArgs {
+    /// Data directory.
+    pub data_dir: PathBuf,
+}
+
+/// Arguments of the compact command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactArgs {
+    /// Data directory.
+    pub data_dir: PathBuf,
 }
 
 /// Default model directory for the frozen revision.
@@ -114,7 +252,7 @@ where
     let mut args = args.into_iter();
     let Some(first) = args.next() else {
         return Err(Error::usage(
-            "no command provided; use `--help` to display help",
+            "no command provided; use --help to display help",
         ));
     };
     let first = first
@@ -140,9 +278,11 @@ where
             Ok(Command::Help)
         }
         "embed" => parse_embed(rest),
-        other => Err(Error::usage(format!(
-            "unknown command `{other}`; use `--help`"
-        ))),
+        "index" => parse_index(rest),
+        "search" => parse_search(rest),
+        "verify" => parse_verify(rest),
+        "compact" => parse_compact(rest),
+        other => Err(Error::usage(format!("unknown command {other}; use --help"))),
     }
 }
 
@@ -150,8 +290,35 @@ fn reject_extra(args: &[String], command: &str) -> Result<()> {
     if args.is_empty() {
         Ok(())
     } else {
-        Err(Error::usage(format!("extra arguments after `{command}`")))
+        Err(Error::usage(format!("extra arguments after {command}")))
     }
+}
+
+fn next_value<'a>(args: &'a [String], index: &mut usize, option: &str) -> Result<&'a str> {
+    *index += 1;
+    args.get(*index)
+        .map(String::as_str)
+        .ok_or_else(|| Error::usage(format!("{option} requires a value")))
+}
+
+fn parse_dimension(value: &str) -> Result<usize> {
+    let dimension = value
+        .parse::<usize>()
+        .map_err(|_| Error::usage(format!("invalid dimension {value}")))?;
+    if dimension == 0 {
+        return Err(Error::usage("dimension must be positive"));
+    }
+    Ok(dimension)
+}
+
+fn parse_positive_usize(value: &str, name: &str) -> Result<usize> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| Error::usage(format!("invalid {name} {value}")))?;
+    if parsed == 0 {
+        return Err(Error::usage(format!("{name} must be positive")));
+    }
+    Ok(parsed)
 }
 
 fn parse_embed(args: Vec<String>) -> Result<Command> {
@@ -167,58 +334,38 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
         let argument = args[index].as_str();
         match argument {
             "--model-dir" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| Error::usage("--model-dir requires a value"))?;
+                let value = next_value(&args, &mut index, "--model-dir")?;
                 model_dir = PathBuf::from(value);
             }
             "--prompt" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| Error::usage("--prompt requires a value"))?;
+                let value = next_value(&args, &mut index, "--prompt")?;
                 prompt = Prompt::from_name(value).ok_or_else(|| {
                     Error::usage(format!(
-                        "unknown prompt `{value}`; use SearchQuery, Document, Classification, Clustering, CodeRetrieval, FactChecking, SentenceSimilarity, or QuestionAnswering"
+                        "unknown prompt {value}; use SearchQuery, Document, Classification, Clustering, CodeRetrieval, FactChecking, SentenceSimilarity, or QuestionAnswering"
                     ))
                 })?;
             }
             "--dim" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| Error::usage("--dim requires a value"))?;
-                dimension = value
-                    .parse()
-                    .map_err(|_| Error::usage(format!("invalid dimension `{value}`")))?;
-                if dimension == 0 {
-                    return Err(Error::usage("dimension must be positive"));
-                }
+                let value = next_value(&args, &mut index, "--dim")?;
+                dimension = parse_dimension(value)?;
             }
             "--ids" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| Error::usage("--ids requires a value"))?;
+                let value = next_value(&args, &mut index, "--ids")?;
                 if ids.is_some() {
                     return Err(Error::usage("--ids was provided more than once"));
                 }
                 ids = Some(parse_ids(value)?);
             }
             "--text" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| Error::usage("--text requires a value"))?;
+                let value = next_value(&args, &mut index, "--text")?;
                 if explicit_text.is_some() {
                     return Err(Error::usage("--text was provided more than once"));
                 }
-                explicit_text = Some(value.clone());
+                explicit_text = Some(value.to_owned());
             }
             "-h" | "--help" => return Ok(Command::Help),
             other if other.starts_with('-') => {
-                return Err(Error::usage(format!("unknown option `{other}`")));
+                return Err(Error::usage(format!("unknown option {other}")));
             }
             other => text_parts.push(other.to_owned()),
         }
@@ -260,26 +407,241 @@ fn parse_ids(value: &str) -> Result<Vec<u32>> {
         }
         let id = part
             .parse::<u32>()
-            .map_err(|_| Error::usage(format!("invalid token id `{part}`")))?;
+            .map_err(|_| Error::usage(format!("invalid token id {part}")))?;
         ids.push(id);
     }
     if ids.is_empty() {
         return Err(Error::usage("--ids requires at least one id"));
     }
+    if ids.len() > MAX_IDS {
+        return Err(Error::limit_exceeded(format!(
+            "--ids has {} ids, above the {MAX_IDS}-id cap",
+            ids.len()
+        )));
+    }
     Ok(ids)
 }
 
-/// Executes a command and writes its output to `stdout`.
+fn parse_index(args: Vec<String>) -> Result<Command> {
+    let mut data_dir = None;
+    let mut model_dir = default_model_dir();
+    let mut dimension = 768usize;
+    let mut input = None;
+    let mut ids_mode = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        let argument = args[index].as_str();
+        match argument {
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "--model-dir" => {
+                let value = next_value(&args, &mut index, "--model-dir")?;
+                model_dir = PathBuf::from(value);
+            }
+            "--dim" => {
+                let value = next_value(&args, &mut index, "--dim")?;
+                dimension = parse_dimension(value)?;
+            }
+            "--ids" => ids_mode = true,
+            "-h" | "--help" => return Ok(Command::Help),
+            "-" => {
+                if input.is_some() {
+                    return Err(Error::usage("index accepts exactly one JSONL file or -"));
+                }
+                input = Some(PathBuf::from("-"));
+            }
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => {
+                if input.is_some() {
+                    return Err(Error::usage("index accepts exactly one JSONL file or -"));
+                }
+                input = Some(PathBuf::from(other));
+            }
+        }
+        index += 1;
+    }
+
+    let data_dir = data_dir.ok_or_else(|| Error::usage("index requires --data-dir <DIR>"))?;
+    let input = input.ok_or_else(|| Error::usage("index requires a JSONL file or -"))?;
+    Ok(Command::Index(IndexArgs {
+        data_dir,
+        model_dir,
+        dimension,
+        input,
+        ids_mode,
+    }))
+}
+
+fn parse_search(args: Vec<String>) -> Result<Command> {
+    let mut data_dir = None;
+    let mut model_dir = default_model_dir();
+    let mut dimension = 768usize;
+    let mut mode = SearchMode::Hybrid;
+    let mut limit = 10usize;
+    let mut offset = 0usize;
+    let mut filters = Filters::new();
+    let mut ids = None;
+    let mut query_parts = Vec::new();
+    let mut index = 0;
+
+    while index < args.len() {
+        let argument = args[index].as_str();
+        match argument {
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "--model-dir" => {
+                let value = next_value(&args, &mut index, "--model-dir")?;
+                model_dir = PathBuf::from(value);
+            }
+            "--dim" => {
+                let value = next_value(&args, &mut index, "--dim")?;
+                dimension = parse_dimension(value)?;
+            }
+            "--mode" => {
+                let value = next_value(&args, &mut index, "--mode")?;
+                mode = SearchMode::from_name(value).ok_or_else(|| {
+                    Error::usage(format!(
+                        "unknown search mode {value}; use hybrid, lexical, or vector"
+                    ))
+                })?;
+            }
+            "--limit" => {
+                let value = next_value(&args, &mut index, "--limit")?;
+                limit = parse_positive_usize(value, "limit")?;
+            }
+            "--offset" => {
+                let value = next_value(&args, &mut index, "--offset")?;
+                offset = value
+                    .parse::<usize>()
+                    .map_err(|_| Error::usage(format!("invalid offset {value}")))?;
+            }
+            "--filter" => {
+                let value = next_value(&args, &mut index, "--filter")?;
+                parse_filter(value, &mut filters)?;
+            }
+            "--ids" => {
+                let value = next_value(&args, &mut index, "--ids")?;
+                if ids.is_some() {
+                    return Err(Error::usage("--ids was provided more than once"));
+                }
+                ids = Some(parse_ids(value)?);
+            }
+            "-h" | "--help" => return Ok(Command::Help),
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => query_parts.push(other.to_owned()),
+        }
+        index += 1;
+    }
+
+    let data_dir = data_dir.ok_or_else(|| Error::usage("search requires --data-dir <DIR>"))?;
+    if mode == SearchMode::Lexical && ids.is_some() {
+        return Err(Error::usage(
+            "--ids cannot be used with lexical search mode",
+        ));
+    }
+    let input = if query_parts.is_empty() {
+        SearchInput::Stdin
+    } else {
+        SearchInput::Text(query_parts.join(" "))
+    };
+
+    Ok(Command::Search(SearchArgs {
+        data_dir,
+        model_dir,
+        dimension,
+        mode,
+        limit,
+        offset,
+        filters,
+        input,
+        ids,
+    }))
+}
+
+fn parse_filter(value: &str, filters: &mut Filters) -> Result<()> {
+    let (key, value) = value
+        .split_once('=')
+        .ok_or_else(|| Error::usage("--filter requires KEY=VALUE"))?;
+    if key.is_empty() || value.is_empty() {
+        return Err(Error::usage("--filter key and value must not be empty"));
+    }
+    filters.add_metadata(key, value)
+}
+
+fn parse_verify(args: Vec<String>) -> Result<Command> {
+    let mut data_dir = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "-h" | "--help" => return Ok(Command::Help),
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => {
+                return Err(Error::usage(format!(
+                    "unexpected argument {other}; verify accepts only --data-dir"
+                )));
+            }
+        }
+        index += 1;
+    }
+    let data_dir = data_dir.ok_or_else(|| Error::usage("verify requires --data-dir <DIR>"))?;
+    Ok(Command::Verify(VerifyArgs { data_dir }))
+}
+
+fn parse_compact(args: Vec<String>) -> Result<Command> {
+    let mut data_dir = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--data-dir" => {
+                let value = next_value(&args, &mut index, "--data-dir")?;
+                data_dir = Some(PathBuf::from(value));
+            }
+            "-h" | "--help" => return Ok(Command::Help),
+            other if other.starts_with('-') => {
+                return Err(Error::usage(format!("unknown option {other}")));
+            }
+            other => {
+                return Err(Error::usage(format!(
+                    "unexpected argument {other}; compact accepts only --data-dir"
+                )));
+            }
+        }
+        index += 1;
+    }
+    let data_dir = data_dir.ok_or_else(|| Error::usage("compact requires --data-dir <DIR>"))?;
+    Ok(Command::Compact(CompactArgs { data_dir }))
+}
+
+/// Executes a command and writes its output to stdout.
 ///
 /// # Errors
 ///
-/// Returns a typed error for a usage problem, a model loading failure, a
+/// Returns a typed error for a usage problem, a model or storage failure, a
 /// numerical failure, or a write failure such as a closed pipe.
 pub fn run<W: Write>(command: Command, stdout: &mut W) -> Result<()> {
     match command {
         Command::Version => writeln!(stdout, "{PROGRAM_NAME} {VERSION} ({TARGET_TRIPLE})")?,
         Command::Help => stdout.write_all(HELP.as_bytes())?,
         Command::Embed(args) => run_embed(args, stdout)?,
+        Command::Index(args) => run_index(args, stdout)?,
+        Command::Search(args) => run_search(args, stdout)?,
+        Command::Verify(args) => run_verify(args, stdout)?,
+        Command::Compact(args) => run_compact(args, stdout)?,
     }
     stdout.flush()?;
     Ok(())
@@ -300,16 +662,7 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
             write_vector(&embedding, stdout)?;
         }
         EmbedInput::Stdin => {
-            let mut text = String::new();
-            std::io::stdin()
-                .lock()
-                .take(MAX_STDIN_BYTES as u64 + 1)
-                .read_to_string(&mut text)?;
-            if text.len() > MAX_STDIN_BYTES {
-                return Err(Error::limit_exceeded(format!(
-                    "standard input exceeds the {MAX_STDIN_BYTES}-byte cap"
-                )));
-            }
+            let text = read_stdin_bounded(MAX_STDIN_BYTES)?;
             let embedder = TextEmbedder::load(&args.model_dir)?;
             validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
             let embedding = embedder.embed(&text, args.prompt, args.dimension)?;
@@ -317,6 +670,189 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
+    let input = read_index_input(&args.input)?;
+    let pending = parse_index_documents(&input, args.ids_mode)?;
+
+    let mut ingested = 0usize;
+    let mut chunks = 0usize;
+
+    if args.ids_mode {
+        let model = TextModel::load(&args.model_dir)?;
+        validate_dimension(args.dimension, model.config().embedding_dim())?;
+        let mut store = Store::open(&args.data_dir)?;
+        for pending in pending {
+            let ids = pending
+                .ids
+                .as_ref()
+                .ok_or_else(|| Error::internal("ids mode document is missing its ids array"))?;
+            let embedding = model.embed_ids(ids, args.dimension)?;
+            let chunk_ids = store.put_document(
+                pending.document,
+                vec![ChunkInput::new(pending.text, embedding)],
+            )?;
+            ingested += 1;
+            chunks += chunk_ids.len();
+        }
+        write_index_summary(stdout, &args.data_dir, &store, ingested, chunks)?;
+    } else {
+        let embedder = TextEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        let mut store = Store::open(&args.data_dir)?;
+        for pending in pending {
+            let embedding = embedder.embed(&pending.text, Prompt::Document, args.dimension)?;
+            let chunk_ids = store.put_document(
+                pending.document,
+                vec![ChunkInput::new(pending.text, embedding)],
+            )?;
+            ingested += 1;
+            chunks += chunk_ids.len();
+        }
+        write_index_summary(stdout, &args.data_dir, &store, ingested, chunks)?;
+    }
+    Ok(())
+}
+
+fn write_index_summary<W: Write>(
+    stdout: &mut W,
+    data_dir: &Path,
+    store: &Store,
+    documents: usize,
+    chunks: usize,
+) -> Result<()> {
+    let mut object = Object::new();
+    object.insert(
+        "documents".to_owned(),
+        Value::Number(Number::Unsigned(documents as u64)),
+    );
+    object.insert(
+        "chunks".to_owned(),
+        Value::Number(Number::Unsigned(chunks as u64)),
+    );
+    object.insert(
+        "dimension".to_owned(),
+        Value::Number(Number::Unsigned(
+            store.embedding_dimension().unwrap_or(0) as u64
+        )),
+    );
+    object.insert(
+        "data_dir".to_owned(),
+        Value::String(data_dir.display().to_string()),
+    );
+    object.insert(
+        "recovery_records".to_owned(),
+        Value::Number(Number::Unsigned(store.recovery().replayed_records)),
+    );
+    object.insert(
+        "recovery_truncated_bytes".to_owned(),
+        Value::Number(Number::Unsigned(store.recovery().truncated_bytes)),
+    );
+    write_json(stdout, &Value::Object(object))
+}
+
+fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
+    if args.mode == SearchMode::Lexical && args.ids.is_some() {
+        return Err(Error::usage(
+            "--ids cannot be used with lexical search mode",
+        ));
+    }
+    let query_text = match args.input {
+        SearchInput::Text(text) => text,
+        SearchInput::Stdin => read_stdin_bounded(MAX_STDIN_BYTES)?,
+    };
+    if query_text.len() > MAX_STDIN_BYTES {
+        return Err(Error::limit_exceeded(format!(
+            "query text is {} bytes, above the {MAX_STDIN_BYTES}-byte cap",
+            query_text.len()
+        )));
+    }
+
+    let store = ReadOnlyStore::open(&args.data_dir)?;
+    let index = Index::build_read_only(&store)?;
+
+    let embedding = if args.mode == SearchMode::Lexical {
+        None
+    } else if let Some(ids) = &args.ids {
+        let model = TextModel::load(&args.model_dir)?;
+        validate_dimension(args.dimension, model.config().embedding_dim())?;
+        Some(model.embed_ids(ids, args.dimension)?)
+    } else {
+        let embedder = TextEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        Some(embedder.embed(&query_text, Prompt::SearchQuery, args.dimension)?)
+    };
+
+    let mut request = SearchRequest::new(args.mode, args.limit);
+    request.offset = args.offset;
+    request.filters = args.filters;
+    request.text = if args.mode == SearchMode::Vector {
+        None
+    } else {
+        Some(query_text.as_str())
+    };
+    request.embedding = embedding.as_deref();
+
+    let hits = index.search(&request)?;
+    write_hits(stdout, &hits)
+}
+
+fn run_verify<W: Write>(args: VerifyArgs, stdout: &mut W) -> Result<()> {
+    let verification = Store::verify(&args.data_dir)?;
+    let mut object = Object::new();
+    object.insert(
+        "records".to_owned(),
+        Value::Number(Number::Unsigned(verification.records)),
+    );
+    object.insert(
+        "snapshot_records".to_owned(),
+        Value::Number(Number::Unsigned(verification.snapshot_records)),
+    );
+    object.insert(
+        "documents".to_owned(),
+        Value::Number(Number::Unsigned(verification.documents as u64)),
+    );
+    object.insert(
+        "chunks".to_owned(),
+        Value::Number(Number::Unsigned(verification.chunks as u64)),
+    );
+    object.insert(
+        "truncated_bytes".to_owned(),
+        Value::Number(Number::Unsigned(verification.truncated_bytes)),
+    );
+    object.insert(
+        "data_dir".to_owned(),
+        Value::String(args.data_dir.display().to_string()),
+    );
+    write_json(stdout, &Value::Object(object))
+}
+
+fn run_compact<W: Write>(args: CompactArgs, stdout: &mut W) -> Result<()> {
+    let mut store = Store::open(&args.data_dir)?;
+    let compaction = store.compact()?;
+    let mut object = Object::new();
+    object.insert(
+        "snapshot_records".to_owned(),
+        Value::Number(Number::Unsigned(compaction.snapshot_records)),
+    );
+    object.insert(
+        "snapshot_bytes".to_owned(),
+        Value::Number(Number::Unsigned(compaction.snapshot_bytes)),
+    );
+    object.insert(
+        "documents".to_owned(),
+        Value::Number(Number::Unsigned(compaction.documents as u64)),
+    );
+    object.insert(
+        "chunks".to_owned(),
+        Value::Number(Number::Unsigned(compaction.chunks as u64)),
+    );
+    object.insert(
+        "data_dir".to_owned(),
+        Value::String(args.data_dir.display().to_string()),
+    );
+    write_json(stdout, &Value::Object(object))
 }
 
 fn validate_dimension(requested: usize, model_dimension: usize) -> Result<()> {
@@ -336,18 +872,288 @@ fn write_vector<W: Write>(values: &[f32], stdout: &mut W) -> Result<()> {
         }
         write!(stdout, "{value}")?;
     }
-    stdout.write_all(
-        b"]
-",
-    )?;
+    stdout.write_all(b"]\n")?;
     Ok(())
+}
+
+fn write_hits<W: Write>(stdout: &mut W, hits: &[SearchHit<'_>]) -> Result<()> {
+    let mut values = Vec::with_capacity(hits.len());
+    for hit in hits {
+        let mut object = Object::new();
+        object.insert(
+            "chunk_id".to_owned(),
+            Value::Number(Number::Unsigned(hit.chunk_id.get())),
+        );
+        object.insert(
+            "document_id".to_owned(),
+            Value::String(hit.document_id.as_str().to_owned()),
+        );
+        object.insert(
+            "ordinal".to_owned(),
+            Value::Number(Number::Unsigned(u64::from(hit.ordinal))),
+        );
+        object.insert("score".to_owned(), Value::Number(Number::Float(hit.score)));
+        object.insert("lexical_rank".to_owned(), optional_rank(hit.lexical_rank));
+        object.insert("vector_rank".to_owned(), optional_rank(hit.vector_rank));
+        object.insert("title".to_owned(), optional_string(hit.title));
+        object.insert("source".to_owned(), optional_string(hit.source));
+        object.insert(
+            "modality".to_owned(),
+            Value::String(hit.modality.as_str().to_owned()),
+        );
+        object.insert("text".to_owned(), Value::String(hit.text.to_owned()));
+        let mut metadata = Object::new();
+        for (key, value) in hit.metadata.iter() {
+            metadata.insert(key.to_owned(), Value::String(value.to_owned()));
+        }
+        object.insert("metadata".to_owned(), Value::Object(metadata));
+        values.push(Value::Object(object));
+    }
+    write_json(stdout, &Value::Array(values))
+}
+
+fn optional_rank(value: Option<usize>) -> Value {
+    match value {
+        Some(value) => Value::Number(Number::Unsigned(value as u64)),
+        None => Value::Null,
+    }
+}
+
+fn optional_string(value: Option<&str>) -> Value {
+    match value {
+        Some(value) => Value::String(value.to_owned()),
+        None => Value::Null,
+    }
+}
+
+fn write_json<W: Write>(stdout: &mut W, value: &Value) -> Result<()> {
+    let encoded = json::to_string(value)?;
+    writeln!(stdout, "{encoded}")?;
+    Ok(())
+}
+
+fn read_stdin_bounded(max_bytes: usize) -> Result<String> {
+    let mut bytes = Vec::new();
+    std::io::stdin()
+        .lock()
+        .take(max_bytes as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(Error::limit_exceeded(format!(
+            "standard input exceeds the {max_bytes}-byte cap"
+        )));
+    }
+    String::from_utf8(bytes).map_err(|_| Error::corrupt("standard input is not valid UTF-8"))
+}
+
+fn read_index_input(path: &Path) -> Result<String> {
+    let bytes = if path == Path::new("-") {
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .lock()
+            .take(MAX_INDEX_FILE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_INDEX_FILE_BYTES {
+            return Err(Error::limit_exceeded(format!(
+                "index input exceeds the {MAX_INDEX_FILE_BYTES}-byte cap"
+            )));
+        }
+        bytes
+    } else {
+        read_file_bounded(path, MAX_INDEX_FILE_BYTES)?
+    };
+    String::from_utf8(bytes).map_err(|_| Error::corrupt("index input is not valid UTF-8"))
+}
+
+struct PendingDocument {
+    document: Document,
+    text: String,
+    ids: Option<Vec<u32>>,
+}
+
+fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocument>> {
+    let mut documents = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for (line_index, raw_line) in input.split('\n').enumerate() {
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        if line.trim().is_empty() {
+            continue;
+        }
+        if line.len() > MAX_INDEX_LINE_BYTES {
+            return Err(Error::limit_exceeded(format!(
+                "line {} is {} bytes, above the {MAX_INDEX_LINE_BYTES}-byte cap",
+                line_index + 1,
+                line.len()
+            )));
+        }
+        if documents.len() >= MAX_INDEX_DOCUMENTS {
+            return Err(Error::limit_exceeded(format!(
+                "index input has more than {MAX_INDEX_DOCUMENTS} documents"
+            )));
+        }
+
+        let value = json::parse(line)
+            .map_err(|error| Error::corrupt(format!("line {}: {error}", line_index + 1)))?;
+        let object = value.as_object().ok_or_else(|| {
+            Error::usage(format!("line {} must be a JSON object", line_index + 1))
+        })?;
+
+        for key in object.keys() {
+            if !allowed_index_field(key, ids_mode) {
+                return Err(Error::usage(format!(
+                    "line {} has unknown field {key}",
+                    line_index + 1
+                )));
+            }
+        }
+
+        let id = required_string(object, "id", line_index)?;
+        let document_id = DocumentId::new(id)?;
+        if !seen.insert(document_id.clone()) {
+            return Err(Error::usage(format!(
+                "duplicate document id {}",
+                document_id
+            )));
+        }
+        let text = required_string(object, "text", line_index)?.to_owned();
+        let mut document = Document::new(document_id, Modality::Text);
+
+        if let Some(title) = optional_string_field(object, "title", line_index)? {
+            document = document.with_title(title)?;
+        }
+        if let Some(source) = optional_string_field(object, "source", line_index)? {
+            document = document.with_source(source)?;
+        }
+        let metadata = parse_metadata(object.get("metadata"), line_index)?;
+        document = document.with_metadata(metadata);
+
+        let ids = if ids_mode {
+            Some(parse_json_ids(object.get("ids"), line_index)?)
+        } else {
+            None
+        };
+
+        documents.push(PendingDocument {
+            document,
+            text,
+            ids,
+        });
+    }
+
+    if documents.is_empty() {
+        return Err(Error::usage("index input contains no documents"));
+    }
+    Ok(documents)
+}
+
+fn allowed_index_field(key: &str, ids_mode: bool) -> bool {
+    matches!(key, "id" | "text" | "title" | "source" | "metadata") || (ids_mode && key == "ids")
+}
+
+fn required_string<'a>(object: &'a Object, key: &str, line_index: usize) -> Result<&'a str> {
+    object.get(key).and_then(Value::as_str).ok_or_else(|| {
+        Error::usage(format!(
+            "line {} field {key} must be a string",
+            line_index + 1
+        ))
+    })
+}
+
+fn optional_string_field<'a>(
+    object: &'a Object,
+    key: &str,
+    line_index: usize,
+) -> Result<Option<&'a str>> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value)),
+        Some(other) => Err(Error::usage(format!(
+            "line {} field {key} must be a string or null, got {}",
+            line_index + 1,
+            other.type_name()
+        ))),
+    }
+}
+
+fn parse_metadata(value: Option<&Value>, line_index: usize) -> Result<Metadata> {
+    let mut metadata = Metadata::new();
+    let Some(value) = value else {
+        return Ok(metadata);
+    };
+    let object = value.as_object().ok_or_else(|| {
+        Error::usage(format!(
+            "line {} field metadata must be an object",
+            line_index + 1
+        ))
+    })?;
+    for (key, value) in object {
+        let value = value.as_str().ok_or_else(|| {
+            Error::usage(format!(
+                "line {} metadata value for {key} must be a string",
+                line_index + 1
+            ))
+        })?;
+        metadata.insert(key.clone(), value.to_owned())?;
+    }
+    Ok(metadata)
+}
+
+fn parse_json_ids(value: Option<&Value>, line_index: usize) -> Result<Vec<u32>> {
+    let value = value.ok_or_else(|| {
+        Error::usage(format!(
+            "line {} requires an ids array in --ids mode",
+            line_index + 1
+        ))
+    })?;
+    let array = value.as_array().ok_or_else(|| {
+        Error::usage(format!(
+            "line {} field ids must be an array",
+            line_index + 1
+        ))
+    })?;
+    if array.is_empty() {
+        return Err(Error::usage(format!(
+            "line {} ids array must not be empty",
+            line_index + 1
+        )));
+    }
+    if array.len() > MAX_IDS {
+        return Err(Error::limit_exceeded(format!(
+            "line {} has {} ids, above the {MAX_IDS}-id cap",
+            line_index + 1,
+            array.len()
+        )));
+    }
+    let mut ids = Vec::with_capacity(array.len());
+    for value in array {
+        let number = value.as_number().ok_or_else(|| {
+            Error::usage(format!(
+                "line {} ids entries must be integers",
+                line_index + 1
+            ))
+        })?;
+        let raw = number.as_u64().ok_or_else(|| {
+            Error::usage(format!(
+                "line {} ids entries must be non-negative integers",
+                line_index + 1
+            ))
+        })?;
+        let id = u32::try_from(raw).map_err(|_| {
+            Error::limit_exceeded(format!(
+                "line {} token id {raw} does not fit u32",
+                line_index + 1
+            ))
+        })?;
+        ids.push(id);
+    }
+    Ok(ids)
 }
 
 /// CLI entry point from the process's raw arguments.
 ///
-/// The first argument is the program name, as with
-/// [`std::env::args_os`]; it is ignored. The rest is parsed by
-/// [`parse`] then executed by [`run`].
+/// The first argument is the program name, as with std::env::args_os; it is
+/// ignored. The rest is parsed by parse then executed by run.
 pub fn main_entry<I, S>(args: I, stdout: &mut impl Write) -> Result<()>
 where
     I: IntoIterator<Item = S>,
@@ -364,7 +1170,23 @@ mod tests {
     use super::*;
     use crate::json;
     use std::ffi::OsStr;
+    use std::fs;
     use std::os::unix::ffi::OsStrExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "seldon-cli-{}-{}-{unique}",
+            std::process::id(),
+            name
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
 
     fn parse_args(args: &[&str]) -> Result<Command> {
         parse(args.iter().copied())
@@ -374,6 +1196,20 @@ mod tests {
         match parse_args(args).expect("embed arguments must parse") {
             Command::Embed(args) => args,
             other => panic!("expected embed, got {other:?}"),
+        }
+    }
+
+    fn parse_index_args(args: &[&str]) -> IndexArgs {
+        match parse_args(args).expect("index arguments must parse") {
+            Command::Index(args) => args,
+            other => panic!("expected index, got {other:?}"),
+        }
+    }
+
+    fn parse_search_args(args: &[&str]) -> SearchArgs {
+        match parse_args(args).expect("search arguments must parse") {
+            Command::Search(args) => args,
+            other => panic!("expected search, got {other:?}"),
         }
     }
 
@@ -480,6 +1316,145 @@ mod tests {
     }
 
     #[test]
+    fn parses_index_defaults_and_ids_mode() {
+        let args = parse_index_args(&["index", "--data-dir", "data", "docs.jsonl"]);
+        assert_eq!(args.data_dir, PathBuf::from("data"));
+        assert_eq!(args.model_dir, default_model_dir());
+        assert_eq!(args.dimension, 768);
+        assert_eq!(args.input, PathBuf::from("docs.jsonl"));
+        assert!(!args.ids_mode);
+
+        let args = parse_index_args(&[
+            "index",
+            "--data-dir",
+            "data",
+            "--model-dir",
+            "fixtures/model/tiny_text",
+            "--dim",
+            "8",
+            "--ids",
+            "-",
+        ]);
+        assert_eq!(args.model_dir, PathBuf::from("fixtures/model/tiny_text"));
+        assert_eq!(args.dimension, 8);
+        assert_eq!(args.input, PathBuf::from("-"));
+        assert!(args.ids_mode);
+    }
+
+    #[test]
+    fn rejects_invalid_index_options() {
+        for args in [
+            &["index", "docs.jsonl"][..],
+            &["index", "--data-dir", "data"],
+            &["index", "--data-dir", "data", "a", "b"],
+            &["index", "--data-dir", "data", "--dim", "0", "docs.jsonl"],
+            &["index", "--data-dir", "data", "--unknown", "docs.jsonl"],
+        ] {
+            let error = parse_args(args).expect_err("invalid index arguments must fail");
+            assert!(matches!(error, Error::Usage(_)), "args {args:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn parses_search_defaults_and_filters() {
+        let args = parse_search_args(&[
+            "search",
+            "--data-dir",
+            "data",
+            "--mode",
+            "lexical",
+            "--limit",
+            "5",
+            "--offset",
+            "2",
+            "--filter",
+            "lang=en",
+            "--filter",
+            "kind=note",
+            "rust",
+            "language",
+        ]);
+        assert_eq!(args.data_dir, PathBuf::from("data"));
+        assert_eq!(args.mode, SearchMode::Lexical);
+        assert_eq!(args.limit, 5);
+        assert_eq!(args.offset, 2);
+        assert_eq!(
+            args.filters.metadata(),
+            &[
+                ("lang".to_owned(), "en".to_owned()),
+                ("kind".to_owned(), "note".to_owned())
+            ]
+        );
+        assert_eq!(args.input, SearchInput::Text("rust language".to_owned()));
+        assert_eq!(args.ids, None);
+
+        let args = parse_search_args(&[
+            "search",
+            "--data-dir",
+            "data",
+            "--mode",
+            "vector",
+            "--ids",
+            "1,2,3",
+        ]);
+        assert_eq!(args.mode, SearchMode::Vector);
+        assert_eq!(args.input, SearchInput::Stdin);
+        assert_eq!(args.ids, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn rejects_invalid_search_options() {
+        for args in [
+            &["search", "query"][..],
+            &["search", "--data-dir", "data", "--mode", "unknown", "query"],
+            &["search", "--data-dir", "data", "--limit", "0", "query"],
+            &["search", "--data-dir", "data", "--offset", "x", "query"],
+            &["search", "--data-dir", "data", "--filter", "lang", "query"],
+            &["search", "--data-dir", "data", "--filter", "=en", "query"],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "lexical",
+                "--ids",
+                "1,2",
+                "query",
+            ],
+            &["search", "--data-dir", "data", "--unknown", "query"],
+        ] {
+            let error = parse_args(args).expect_err("invalid search arguments must fail");
+            assert!(matches!(error, Error::Usage(_)), "args {args:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn parses_verify_arguments() {
+        match parse_args(&["verify", "--data-dir", "data"]).expect("verify") {
+            Command::Verify(args) => assert_eq!(args.data_dir, PathBuf::from("data")),
+            other => panic!("expected verify, got {other:?}"),
+        }
+        let error = parse_args(&["verify"]).expect_err("data dir required");
+        assert!(matches!(error, Error::Usage(_)));
+        let error =
+            parse_args(&["verify", "--data-dir", "data", "extra"]).expect_err("extra argument");
+        assert!(matches!(error, Error::Usage(_)));
+    }
+
+    #[test]
+    fn parses_compact_arguments() {
+        match parse_args(&["compact", "--data-dir", "data"]).expect("compact") {
+            Command::Compact(args) => assert_eq!(args.data_dir, PathBuf::from("data")),
+            other => panic!("expected compact, got {other:?}"),
+        }
+        let error = parse_args(&["compact"]).expect_err("data dir required");
+        assert!(matches!(error, Error::Usage(_)));
+        let error =
+            parse_args(&["compact", "--data-dir", "data", "extra"]).expect_err("extra argument");
+        assert!(matches!(error, Error::Usage(_)));
+    }
+
+    #[test]
     fn version_output_is_stable() {
         let mut output = Vec::new();
         run(Command::Version, &mut output).expect("writing must succeed");
@@ -497,6 +1472,9 @@ mod tests {
         assert!(text.contains("USAGE:"));
         assert!(text.contains("EXIT CODES:"));
         assert!(text.contains("embed"));
+        assert!(text.contains("index"));
+        assert!(text.contains("search"));
+        assert!(text.contains("verify"));
     }
 
     #[test]
@@ -536,5 +1514,287 @@ mod tests {
             String::from_utf8(output).expect("output must be UTF-8"),
             format!("{PROGRAM_NAME} {VERSION} ({TARGET_TRIPLE})\n")
         );
+    }
+
+    #[test]
+    fn index_search_and_verify_work_with_the_tiny_model() {
+        let dir = temp_dir("m3");
+        let jsonl = dir.join("documents.jsonl");
+        let documents = concat!(
+            "{\"id\":\"doc-1\",\"text\":\"rust language systems\",\"ids\":[1,5,7,9,2]}\n",
+            "{\"id\":\"doc-2\",\"text\":\"python language scripting\",\"ids\":[1,6,7,9,2]}\n",
+            "{\"id\":\"doc-3\",\"text\":\"rust rust rust\",\"ids\":[1,5,7,9,3]}\n"
+        );
+        fs::write(&jsonl, documents).expect("write JSONL");
+        let data_dir = dir.join("data");
+
+        let mut output = Vec::new();
+        run(
+            Command::Index(IndexArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                input: jsonl,
+                ids_mode: true,
+            }),
+            &mut output,
+        )
+        .expect("index must succeed");
+        let summary =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("summary JSON");
+        assert_eq!(
+            summary
+                .get("documents")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            summary
+                .get("chunks")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            summary
+                .get("dimension")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(8)
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Search(SearchArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                mode: SearchMode::Lexical,
+                limit: 10,
+                offset: 0,
+                filters: Filters::new(),
+                input: SearchInput::Text("rust".to_owned()),
+                ids: None,
+            }),
+            &mut output,
+        )
+        .expect("lexical search must succeed");
+        let hits =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("hits JSON");
+        let hits = hits.as_array().expect("array");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(
+            hits[0]
+                .get("chunk_id")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            hits[1]
+                .get("chunk_id")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(1)
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Search(SearchArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                mode: SearchMode::Vector,
+                limit: 10,
+                offset: 0,
+                filters: Filters::new(),
+                input: SearchInput::Text(String::new()),
+                ids: Some(vec![1, 5, 7, 9, 2]),
+            }),
+            &mut output,
+        )
+        .expect("vector search must succeed");
+        let hits =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("hits JSON");
+        assert_eq!(hits.as_array().expect("array").len(), 3);
+
+        let mut output = Vec::new();
+        run(
+            Command::Search(SearchArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                mode: SearchMode::Hybrid,
+                limit: 10,
+                offset: 0,
+                filters: Filters::new(),
+                input: SearchInput::Text("rust".to_owned()),
+                ids: Some(vec![1, 5, 7, 9, 2]),
+            }),
+            &mut output,
+        )
+        .expect("hybrid search must succeed");
+        let hits =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("hits JSON");
+        assert!(!hits.as_array().expect("array").is_empty());
+
+        let mut output = Vec::new();
+        run(
+            Command::Verify(VerifyArgs {
+                data_dir: data_dir.clone(),
+            }),
+            &mut output,
+        )
+        .expect("verify must succeed");
+        let verification = json::parse(String::from_utf8(output).expect("UTF-8").trim())
+            .expect("verification JSON");
+        assert_eq!(
+            verification
+                .get("records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            verification
+                .get("documents")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            verification
+                .get("chunks")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            verification
+                .get("truncated_bytes")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            verification
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(0)
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Compact(CompactArgs {
+                data_dir: data_dir.clone(),
+            }),
+            &mut output,
+        )
+        .expect("compact must succeed");
+        let compaction =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("compaction JSON");
+        assert_eq!(
+            compaction
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            compaction
+                .get("documents")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert_eq!(
+            compaction
+                .get("chunks")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+        assert!(
+            compaction
+                .get("snapshot_bytes")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64)
+                .unwrap_or(0)
+                > 0
+        );
+
+        let mut output = Vec::new();
+        run(
+            Command::Verify(VerifyArgs {
+                data_dir: data_dir.clone(),
+            }),
+            &mut output,
+        )
+        .expect("verify after compact");
+        let verification = json::parse(String::from_utf8(output).expect("UTF-8").trim())
+            .expect("verification JSON");
+        assert_eq!(
+            verification
+                .get("records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            verification
+                .get("snapshot_records")
+                .and_then(Value::as_number)
+                .and_then(Number::as_u64),
+            Some(3)
+        );
+
+        let writer = Store::open(&data_dir).expect("writer stays open");
+        let mut output = Vec::new();
+        run(
+            Command::Search(SearchArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                mode: SearchMode::Lexical,
+                limit: 10,
+                offset: 0,
+                filters: Filters::new(),
+                input: SearchInput::Text("rust".to_owned()),
+                ids: None,
+            }),
+            &mut output,
+        )
+        .expect("read-only search while a writer is open");
+        let hits =
+            json::parse(String::from_utf8(output).expect("UTF-8").trim()).expect("hits JSON");
+        assert_eq!(hits.as_array().expect("array").len(), 2);
+        drop(writer);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn index_rejects_malformed_jsonl_before_writing() {
+        let dir = temp_dir("malformed");
+        let jsonl = dir.join("documents.jsonl");
+        fs::write(&jsonl, "{\"id\":\"doc-1\"}\n").expect("write");
+        let data_dir = dir.join("data");
+        let mut output = Vec::new();
+        let error = run(
+            Command::Index(IndexArgs {
+                data_dir: data_dir.clone(),
+                model_dir: PathBuf::from("fixtures/model/tiny_text"),
+                dimension: 8,
+                input: jsonl,
+                ids_mode: true,
+            }),
+            &mut output,
+        )
+        .expect_err("missing text must fail");
+        assert!(matches!(error, Error::Usage(_)), "{error}");
+        assert!(!data_dir.exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 }

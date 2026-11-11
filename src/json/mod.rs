@@ -557,6 +557,87 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Serializes a JSON value into compact, deterministic JSON.
+///
+/// Object keys are emitted in BTreeMap order. Strings are escaped so the output
+/// is valid RFC 8259 text. A non-finite number is rejected because JSON cannot
+/// represent NaN or infinity; this is an internal invariant error, not hostile
+/// input.
+pub fn to_string(value: &Value) -> Result<String> {
+    let mut output = String::new();
+    write_value(value, &mut output)?;
+    Ok(output)
+}
+
+fn write_value(value: &Value, output: &mut String) -> Result<()> {
+    match value {
+        Value::Null => output.push_str("null"),
+        Value::Bool(true) => output.push_str("true"),
+        Value::Bool(false) => output.push_str("false"),
+        Value::Number(Number::Unsigned(value)) => output.push_str(&value.to_string()),
+        Value::Number(Number::Signed(value)) => output.push_str(&value.to_string()),
+        Value::Number(Number::Float(value)) => {
+            if !value.is_finite() {
+                return Err(Error::internal("cannot serialize a non-finite JSON number"));
+            }
+            output.push_str(&value.to_string());
+        }
+        Value::String(value) => write_string(value, output),
+        Value::Array(values) => {
+            output.push('[');
+            for (index, value) in values.iter().enumerate() {
+                if index > 0 {
+                    output.push(',');
+                }
+                write_value(value, output)?;
+            }
+            output.push(']');
+        }
+        Value::Object(object) => {
+            output.push('{');
+            for (index, (key, value)) in object.iter().enumerate() {
+                if index > 0 {
+                    output.push(',');
+                }
+                write_string(key, output);
+                output.push(':');
+                write_value(value, output)?;
+            }
+            output.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn write_string(value: &str, output: &mut String) {
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\u{08}' => output.push_str("\\b"),
+            '\u{0c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            character if character < '\u{20}' => {
+                output.push_str("\\u");
+                let scalar = character as u32;
+                for shift in [12u32, 8, 4, 0] {
+                    let digit = ((scalar >> shift) & 0xF) as u8;
+                    output.push(if digit < 10 {
+                        (b'0' + digit) as char
+                    } else {
+                        (b'a' + digit - 10) as char
+                    });
+                }
+            }
+            character => output.push(character),
+        }
+    }
+    output.push('"');
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,5 +878,41 @@ mod tests {
         assert_eq!(negative.as_u64(), None);
         assert_eq!(negative.as_i64(), Some(-1));
         assert!(negative.is_integer());
+    }
+
+    #[test]
+    fn serializer_round_trips_nested_values() {
+        let value = parse_ok("{\"a\":[1,2.5,{\"b\":null}],\"c\":true,\"d\":\"héllo\"}");
+        let encoded = to_string(&value).expect("serialize");
+        assert_eq!(parse_ok(&encoded), value);
+    }
+
+    #[test]
+    fn serializer_escapes_strings_and_controls() {
+        let value = Value::String(
+            "quote:\" slash:/ backslash:\\ b:\u{0008} n:\n r:\r t:\t nul:\u{0000}".to_owned(),
+        );
+        let encoded = to_string(&value).expect("serialize");
+        assert_eq!(parse_ok(&encoded), value);
+        assert!(encoded.contains("\\u0000"));
+        assert!(encoded.contains("\\n"));
+    }
+
+    #[test]
+    fn serializer_emits_deterministic_object_order() {
+        let first = parse_ok("{\"b\":2,\"a\":1}");
+        let second = parse_ok("{\"a\":1,\"b\":2}");
+        assert_eq!(
+            to_string(&first).expect("first"),
+            to_string(&second).expect("second")
+        );
+        assert_eq!(to_string(&first).expect("serialize"), "{\"a\":1,\"b\":2}");
+    }
+
+    #[test]
+    fn serializer_rejects_non_finite_numbers() {
+        let value = Value::Number(Number::Float(f64::NAN));
+        let error = to_string(&value).expect_err("NaN is not JSON");
+        assert!(matches!(error, Error::Internal(_)));
     }
 }

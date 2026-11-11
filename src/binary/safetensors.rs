@@ -88,8 +88,14 @@ impl<'a> TensorEntry<'a> {
                     )));
                 }
                 let mut data = Vec::with_capacity(numel);
-                for chunk in self.bytes.chunks_exact(4) {
-                    data.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+                let (chunks, remainder) = self.bytes.as_chunks::<4>();
+                if !remainder.is_empty() {
+                    return Err(Error::internal(
+                        "F32 byte length check did not consume all bytes",
+                    ));
+                }
+                for chunk in chunks {
+                    data.push(f32::from_le_bytes(*chunk));
                 }
                 Tensor::new(self.shape.clone(), data)
             }
