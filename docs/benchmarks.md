@@ -187,3 +187,87 @@ Interpretation:
 - No batching, SIMD, or quantization is applied at M5. Any optimization must
   replay the six-case audio parity tests and the text-to-audio ranking test
   before reporting a gain.
+
+## NEON kernels — milestone M7 (in progress)
+
+This section records the first M7 optimization step. The scalar path remains
+the correctness oracle; the NEON path is selected at runtime and falls back to
+scalar when the feature is unavailable. The frozen-model parity suites were
+replayed after the change.
+
+### Environment
+
+| Item | Value |
+|---|---|
+| Date | 2026-11-11 |
+| CPU | Apple M2 Pro, 10 cores |
+| Memory | 16 GiB |
+| OS | macOS 26.5.1 (build 25F80) |
+| Target | `aarch64-apple-darwin` |
+| Rust | rustc 1.99.1, cargo 1.99.1 |
+| Profile | release: `opt-level = 3`, thin LTO, one codegen unit |
+| Model | `google/embeddinggemma-2` at `f9972ac22e696a105c482202646979e33e4b5a1e` |
+
+### Kernel microbenchmark
+
+Best of three runs, release profile, measured with `std::time::Instant`:
+
+| Operation | Scalar | NEON | Speedup |
+|---|---:|---:|---:|
+| dot, length 128 | 12.541 ms | 1.980 ms | 6.33x |
+| dot, length 768 | 12.192 ms | 0.875 ms | 13.93x |
+| dot, length 3072 | 12.696 ms | 0.827 ms | 15.35x |
+| linear 1x768x768 | 84.252 ms | 8.205 ms | 10.27x |
+| linear 16x768x3072 | 134.228 ms | 13.403 ms | 10.01x |
+| linear 32x768x3072 | 160.838 ms | 15.893 ms | 10.12x |
+| rms_norm_rows 32x768 | 32.449 ms | 13.651 ms | 2.38x |
+
+The dot and linear cases are dominated by FMA throughput. The row-wise RMSNorm
+case is limited by the per-row reduction and the weighted scale pass; it still
+improves because the sum of squares and the scale are vectorized.
+
+### End-to-end text embedding
+
+Ten calls after one warm-up, same input and prompt as the M2 baseline:
+
+| Metric | M2 scalar | M7 NEON | Speedup |
+|---|---:|---:|---:|
+| p50 | 1.485 s | 0.159 s | 9.3x |
+| p95 | 1.504 s | 0.159 s | 9.5x |
+| Concurrent throughput (4 threads, 20 requests) | 2.43 req/s | 24.47 req/s | 10.1x |
+
+The concurrent run completed in 817 ms. The scalar path was compute-bound and
+shared memory bandwidth; the NEON path removes most of the arithmetic cost, so
+the remaining time is dominated by memory traffic and the non-vectorized
+softmax, GELU, RoPE, and pooling tails.
+
+### Parity replay
+
+| Suite | Result | Wall time |
+|---|---|---:|
+| Text parity (frozen model) | pass | 12.98 s |
+| Image parity (frozen model, 70 visual tokens) | pass | 22.02 s |
+| Audio parity (short tone, frozen model) | pass | 15.03 s |
+
+The text parity test checks the official golden vectors at 1e-4 absolute and
+relative tolerance and 0.9999 cosine. The image and audio tests keep their
+existing thresholds. No threshold was relaxed for M7.
+
+### Reproduction
+
+```bash
+cargo test --release --lib neon_microbenchmark -- --ignored --nocapture
+cargo test --release --test text_bench -- --ignored --nocapture
+cargo test --release --test text_embeddings real_model_parity -- --nocapture
+cargo test --release --test image_embeddings image_embedding_matches_the_official_reference -- --nocapture
+cargo test --release --test audio_embeddings audio_embedding_matches_the_official_reference -- --nocapture
+```
+
+### Interpretation
+
+- These are measured gains on the reference machine, not a claim that the
+  engine is optimized for every Apple Silicon model.
+- The NEON path is deterministic: the four-lane reduction order is fixed.
+- The scalar path is still the oracle and is still tested.
+- Packaging remains in progress: the container format, packer, embedded
+  loading path, and Mach-O size/startup measurements are the next M7 steps.

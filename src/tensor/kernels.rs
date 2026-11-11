@@ -1,15 +1,17 @@
-//! Reference FP32 scalar kernels.
+//! FP32 kernels with a scalar reference and a NEON execution path.
 //!
-//! These functions are the correctness reference for the engine. They are
-//! deterministic, single-threaded, and free of unsafe code. SIMD kernels will
-//! be compared against them before any optimization is accepted.
-//!
-//! Every operation validates lengths and allocation sizes before touching
-//! memory, and rejects non-finite intermediate results where a silent NaN
-//! would corrupt the embedding space.
+//! The scalar functions are the correctness reference for the engine. They are
+//! deterministic and free of unsafe code. The NEON path is selected at runtime
+//! and is compared against the scalar path by the differential tests below.
+//! Every public operation validates lengths and allocation sizes before
+//! touching memory, and rejects non-finite intermediate results where a silent
+//! NaN would corrupt the embedding space.
 
 use crate::error::{Error, Result};
 use crate::tensor::owned::MAX_TENSOR_ELEMENTS;
+
+#[cfg(target_arch = "aarch64")]
+use crate::tensor::neon;
 
 /// Validates that two slices have the same length.
 fn check_same_length(left: &[f32], right: &[f32], operation: &str) -> Result<()> {
@@ -33,25 +35,57 @@ fn check_allocation(count: usize, operation: &str) -> Result<()> {
     Ok(())
 }
 
+/// Element-wise addition, scalar reference.
+pub(crate) fn add_scalar(left: &[f32], right: &[f32]) -> Vec<f32> {
+    left.iter().zip(right).map(|(a, b)| a + b).collect()
+}
+
 /// Element-wise addition.
 pub fn add(left: &[f32], right: &[f32]) -> Result<Vec<f32>> {
     check_same_length(left, right, "addition")?;
     check_allocation(left.len(), "addition")?;
-    Ok(left.iter().zip(right).map(|(a, b)| a + b).collect())
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::add(left, right);
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = add_scalar(left, right);
+    Ok(output)
+}
+
+/// Element-wise subtraction, scalar reference.
+pub(crate) fn sub_scalar(left: &[f32], right: &[f32]) -> Vec<f32> {
+    left.iter().zip(right).map(|(a, b)| a - b).collect()
 }
 
 /// Element-wise subtraction.
 pub fn sub(left: &[f32], right: &[f32]) -> Result<Vec<f32>> {
     check_same_length(left, right, "subtraction")?;
     check_allocation(left.len(), "subtraction")?;
-    Ok(left.iter().zip(right).map(|(a, b)| a - b).collect())
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::sub(left, right);
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = sub_scalar(left, right);
+    Ok(output)
+}
+
+/// Element-wise multiplication, scalar reference.
+pub(crate) fn mul_scalar(left: &[f32], right: &[f32]) -> Vec<f32> {
+    left.iter().zip(right).map(|(a, b)| a * b).collect()
 }
 
 /// Element-wise multiplication.
 pub fn mul(left: &[f32], right: &[f32]) -> Result<Vec<f32>> {
     check_same_length(left, right, "multiplication")?;
     check_allocation(left.len(), "multiplication")?;
-    Ok(left.iter().zip(right).map(|(a, b)| a * b).collect())
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::mul(left, right);
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = mul_scalar(left, right);
+    Ok(output)
+}
+
+/// Multiplies every element by a finite scalar, scalar reference.
+pub(crate) fn scale_scalar(values: &[f32], factor: f32) -> Vec<f32> {
+    values.iter().map(|value| value * factor).collect()
 }
 
 /// Multiplies every element by a finite scalar.
@@ -60,7 +94,29 @@ pub fn scale(values: &[f32], factor: f32) -> Result<Vec<f32>> {
         return Err(Error::internal("scale factor is not finite"));
     }
     check_allocation(values.len(), "scaling")?;
-    Ok(values.iter().map(|value| value * factor).collect())
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::scale(values, factor);
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = scale_scalar(values, factor);
+    Ok(output)
+}
+
+/// Dot product of two vectors, scalar reference.
+pub(crate) fn dot_scalar(left: &[f32], right: &[f32]) -> f32 {
+    let mut sum = 0.0f32;
+    for (a, b) in left.iter().zip(right) {
+        sum += a * b;
+    }
+    sum
+}
+
+/// Dispatches a raw dot product after the caller has validated the lengths.
+fn dot_raw(left: &[f32], right: &[f32]) -> f32 {
+    #[cfg(target_arch = "aarch64")]
+    let result = neon::dot(left, right);
+    #[cfg(not(target_arch = "aarch64"))]
+    let result = dot_scalar(left, right);
+    result
 }
 
 /// Dot product of two vectors.
@@ -70,14 +126,18 @@ pub fn scale(values: &[f32], factor: f32) -> Result<Vec<f32>> {
 /// Returns Error::Internal on a length mismatch or a non-finite result.
 pub fn dot(left: &[f32], right: &[f32]) -> Result<f32> {
     check_same_length(left, right, "dot product")?;
-    let mut sum = 0.0f32;
-    for (a, b) in left.iter().zip(right) {
-        sum += a * b;
-    }
+    let sum = dot_raw(left, right);
     if !sum.is_finite() {
         return Err(Error::internal("dot product produced a non-finite value"));
     }
     Ok(sum)
+}
+
+/// Adds one slice into another in place, scalar reference.
+pub(crate) fn add_in_place_scalar(target: &mut [f32], other: &[f32]) {
+    for (destination, value) in target.iter_mut().zip(other) {
+        *destination += value;
+    }
 }
 
 /// Adds one slice into another in place.
@@ -89,9 +149,10 @@ pub fn add_in_place(target: &mut [f32], other: &[f32]) -> Result<()> {
             other.len()
         )));
     }
-    for (destination, value) in target.iter_mut().zip(other) {
-        *destination += value;
-    }
+    #[cfg(target_arch = "aarch64")]
+    neon::add_in_place(target, other)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    add_in_place_scalar(target, other);
     Ok(())
 }
 
@@ -108,17 +169,14 @@ pub fn matmul(left: &[f32], right: &[f32], m: usize, k: usize, n: usize) -> Resu
     Ok(output)
 }
 
-/// Matrix multiplication into a caller-provided output buffer.
-///
-/// The output buffer is cleared before accumulation, so it can be reused
-/// across layers without reallocating.
-pub fn matmul_into(
+/// Validates the shapes of a row-major matrix multiplication.
+pub(crate) fn validate_matmul_shapes(
     left: &[f32],
     right: &[f32],
     m: usize,
     k: usize,
     n: usize,
-    output: &mut [f32],
+    output: &[f32],
 ) -> Result<()> {
     let left_len = m
         .checked_mul(k)
@@ -149,6 +207,39 @@ pub fn matmul_into(
         )));
     }
     check_allocation(output_len, "matmul")?;
+    Ok(())
+}
+
+/// Matrix multiplication into a caller-provided output buffer.
+///
+/// The output buffer is cleared before accumulation, so it can be reused
+/// across layers without reallocating.
+pub fn matmul_into(
+    left: &[f32],
+    right: &[f32],
+    m: usize,
+    k: usize,
+    n: usize,
+    output: &mut [f32],
+) -> Result<()> {
+    validate_matmul_shapes(left, right, m, k, n, output)?;
+    #[cfg(target_arch = "aarch64")]
+    neon::matmul_into(left, right, m, k, n, output)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    matmul_into_scalar(left, right, m, k, n, output)?;
+    Ok(())
+}
+
+/// Scalar reference for matrix multiplication into a caller-provided buffer.
+pub(crate) fn matmul_into_scalar(
+    left: &[f32],
+    right: &[f32],
+    m: usize,
+    k: usize,
+    n: usize,
+    output: &mut [f32],
+) -> Result<()> {
+    validate_matmul_shapes(left, right, m, k, n, output)?;
 
     output.fill(0.0);
     for row in 0..m {
@@ -229,11 +320,8 @@ pub fn softmax(values: &[f32]) -> Result<Vec<f32>> {
     Ok(output)
 }
 
-/// Root mean square normalization.
-///
-/// Computes input / sqrt(mean(input^2) + epsilon) * weight. The weight is
-/// applied after normalization, as in the reference model.
-pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>> {
+/// Validates the arguments of RMSNorm.
+pub(crate) fn validate_rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<()> {
     check_same_length(input, weight, "RMSNorm")?;
     if input.is_empty() {
         return Err(Error::internal("RMSNorm of an empty slice"));
@@ -244,6 +332,25 @@ pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>>
         ));
     }
     check_allocation(input.len(), "RMSNorm")?;
+    Ok(())
+}
+
+/// Root mean square normalization.
+///
+/// Computes input / sqrt(mean(input^2) + epsilon) * weight. The weight is
+/// applied after normalization, as in the reference model.
+pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>> {
+    validate_rms_norm(input, weight, epsilon)?;
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::rms_norm(input, weight, epsilon)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = rms_norm_scalar(input, weight, epsilon)?;
+    Ok(output)
+}
+
+/// Scalar reference for RMSNorm.
+pub(crate) fn rms_norm_scalar(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>> {
+    validate_rms_norm(input, weight, epsilon)?;
 
     let mut sum = 0.0f32;
     for &value in input {
@@ -292,14 +399,30 @@ pub fn geglu(gate: &[f32], up: &[f32]) -> Result<Vec<f32>> {
         .collect())
 }
 
-/// L2 normalization.
-///
-/// A zero or non-finite vector has no defined direction and is rejected.
-pub fn l2_normalize(input: &[f32]) -> Result<Vec<f32>> {
+/// Validates the argument of L2 normalization.
+pub(crate) fn validate_l2_normalize(input: &[f32]) -> Result<()> {
     if input.is_empty() {
         return Err(Error::internal("cannot normalize an empty vector"));
     }
     check_allocation(input.len(), "L2 normalization")?;
+    Ok(())
+}
+
+/// L2 normalization.
+///
+/// A zero or non-finite vector has no defined direction and is rejected.
+pub fn l2_normalize(input: &[f32]) -> Result<Vec<f32>> {
+    validate_l2_normalize(input)?;
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::l2_normalize(input)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = l2_normalize_scalar(input)?;
+    Ok(output)
+}
+
+/// Scalar reference for L2 normalization.
+pub(crate) fn l2_normalize_scalar(input: &[f32]) -> Result<Vec<f32>> {
+    validate_l2_normalize(input)?;
 
     let mut sum = 0.0f32;
     for &value in input {
@@ -415,10 +538,7 @@ pub fn attention(
                 continue;
             }
             let key_row = &key[column * head_dim..(column + 1) * head_dim];
-            let mut dot_product = 0.0f32;
-            for (query_value, key_value) in query_row.iter().zip(key_row) {
-                dot_product += query_value * key_value;
-            }
+            let dot_product = dot_raw(query_row, key_row);
             let score = dot_product * scale;
             if !score.is_finite() {
                 return Err(Error::internal(
@@ -470,17 +590,14 @@ pub fn linear(
     Ok(output)
 }
 
-/// Linear projection into a caller-provided output buffer.
-///
-/// The output buffer is cleared before accumulation so it can be reused
-/// between layers without reallocating.
-pub fn linear_into(
+/// Validates the shapes of a linear projection.
+pub(crate) fn validate_linear_shapes(
     input: &[f32],
     weight: &[f32],
     rows: usize,
     in_features: usize,
     out_features: usize,
-    output: &mut [f32],
+    output: &[f32],
 ) -> Result<()> {
     let input_len = rows
         .checked_mul(in_features)
@@ -511,6 +628,39 @@ pub fn linear_into(
         )));
     }
     check_allocation(output_len, "linear")?;
+    Ok(())
+}
+
+/// Linear projection into a caller-provided output buffer.
+///
+/// The output buffer is cleared before accumulation so it can be reused
+/// between layers without reallocating.
+pub fn linear_into(
+    input: &[f32],
+    weight: &[f32],
+    rows: usize,
+    in_features: usize,
+    out_features: usize,
+    output: &mut [f32],
+) -> Result<()> {
+    validate_linear_shapes(input, weight, rows, in_features, out_features, output)?;
+    #[cfg(target_arch = "aarch64")]
+    neon::linear_into(input, weight, rows, in_features, out_features, output)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    linear_into_scalar(input, weight, rows, in_features, out_features, output)?;
+    Ok(())
+}
+
+/// Scalar reference for the linear projection.
+pub(crate) fn linear_into_scalar(
+    input: &[f32],
+    weight: &[f32],
+    rows: usize,
+    in_features: usize,
+    out_features: usize,
+    output: &mut [f32],
+) -> Result<()> {
+    validate_linear_shapes(input, weight, rows, in_features, out_features, output)?;
 
     output.fill(0.0);
     for row in 0..rows {
@@ -534,18 +684,14 @@ pub fn linear_into(
     Ok(())
 }
 
-/// RMSNorm applied independently to each contiguous row of a matrix.
-///
-/// The layout is [rows, width] row-major. The same weight vector of length
-/// width is applied to every row, which is the layout of the per-head query
-/// and key normalizations.
-pub fn rms_norm_rows(
+/// Validates the arguments of row-wise RMSNorm.
+pub(crate) fn validate_rms_norm_rows(
     input: &[f32],
     weight: &[f32],
     rows: usize,
     width: usize,
     epsilon: f32,
-) -> Result<Vec<f32>> {
+) -> Result<()> {
     if weight.len() != width {
         return Err(Error::internal(format!(
             "RMSNorm row weight has {} elements, expected {width}",
@@ -570,6 +716,39 @@ pub fn rms_norm_rows(
         ));
     }
     check_allocation(expected, "RMSNorm")?;
+    Ok(())
+}
+
+/// RMSNorm applied independently to each contiguous row of a matrix.
+///
+/// The layout is [rows, width] row-major. The same weight vector of length
+/// width is applied to every row, which is the layout of the per-head query
+/// and key normalizations.
+pub fn rms_norm_rows(
+    input: &[f32],
+    weight: &[f32],
+    rows: usize,
+    width: usize,
+    epsilon: f32,
+) -> Result<Vec<f32>> {
+    validate_rms_norm_rows(input, weight, rows, width, epsilon)?;
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::rms_norm_rows(input, weight, rows, width, epsilon)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = rms_norm_rows_scalar(input, weight, rows, width, epsilon)?;
+    Ok(output)
+}
+
+/// Scalar reference for row-wise RMSNorm.
+pub(crate) fn rms_norm_rows_scalar(
+    input: &[f32],
+    weight: &[f32],
+    rows: usize,
+    width: usize,
+    epsilon: f32,
+) -> Result<Vec<f32>> {
+    validate_rms_norm_rows(input, weight, rows, width, epsilon)?;
+    let expected = input.len();
 
     let mut output = vec![0.0f32; expected];
     for row in 0..rows {
@@ -596,16 +775,13 @@ pub fn rms_norm_rows(
     Ok(output)
 }
 
-/// RMSNorm without a learned scale, applied to each contiguous row.
-///
-/// The reference model uses this form for the value projection, whose norm
-/// deliberately has no weight parameter.
-pub fn rms_norm_rows_unscaled(
+/// Validates the arguments of row-wise RMSNorm without a learned scale.
+pub(crate) fn validate_rms_norm_rows_unscaled(
     input: &[f32],
     rows: usize,
     width: usize,
     epsilon: f32,
-) -> Result<Vec<f32>> {
+) -> Result<()> {
     let expected = rows
         .checked_mul(width)
         .ok_or_else(|| Error::limit_exceeded("RMSNorm row count overflow"))?;
@@ -624,6 +800,36 @@ pub fn rms_norm_rows_unscaled(
         ));
     }
     check_allocation(expected, "RMSNorm")?;
+    Ok(())
+}
+
+/// RMSNorm without a learned scale, applied to each contiguous row.
+///
+/// The reference model uses this form for the value projection, whose norm
+/// deliberately has no weight parameter.
+pub fn rms_norm_rows_unscaled(
+    input: &[f32],
+    rows: usize,
+    width: usize,
+    epsilon: f32,
+) -> Result<Vec<f32>> {
+    validate_rms_norm_rows_unscaled(input, rows, width, epsilon)?;
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::rms_norm_rows_unscaled(input, rows, width, epsilon)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = rms_norm_rows_unscaled_scalar(input, rows, width, epsilon)?;
+    Ok(output)
+}
+
+/// Scalar reference for row-wise RMSNorm without a learned scale.
+pub(crate) fn rms_norm_rows_unscaled_scalar(
+    input: &[f32],
+    rows: usize,
+    width: usize,
+    epsilon: f32,
+) -> Result<Vec<f32>> {
+    validate_rms_norm_rows_unscaled(input, rows, width, epsilon)?;
+    let expected = input.len();
 
     let mut output = vec![0.0f32; expected];
     for row in 0..rows {
@@ -650,12 +856,8 @@ pub fn rms_norm_rows_unscaled(
     Ok(output)
 }
 
-/// Mean-pools a row-major matrix over its rows.
-///
-/// The reference SentenceTransformers pooling is the mean over all
-/// non-padding tokens. For a single unpadded sequence, this is the mean over
-/// every row of the projected hidden state.
-pub fn mean_pool(values: &[f32], rows: usize, width: usize) -> Result<Vec<f32>> {
+/// Validates the arguments of mean pooling.
+pub(crate) fn validate_mean_pool(values: &[f32], rows: usize, width: usize) -> Result<()> {
     let expected = rows
         .checked_mul(width)
         .ok_or_else(|| Error::limit_exceeded("mean pooling size overflow"))?;
@@ -669,6 +871,26 @@ pub fn mean_pool(values: &[f32], rows: usize, width: usize) -> Result<Vec<f32>> 
         return Err(Error::internal("mean pooling of an empty sequence"));
     }
     check_allocation(width, "mean pooling")?;
+    Ok(())
+}
+
+/// Mean-pools a row-major matrix over its rows.
+///
+/// The reference SentenceTransformers pooling is the mean over all
+/// non-padding tokens. For a single unpadded sequence, this is the mean over
+/// every row of the projected hidden state.
+pub fn mean_pool(values: &[f32], rows: usize, width: usize) -> Result<Vec<f32>> {
+    validate_mean_pool(values, rows, width)?;
+    #[cfg(target_arch = "aarch64")]
+    let output = neon::mean_pool(values, rows, width)?;
+    #[cfg(not(target_arch = "aarch64"))]
+    let output = mean_pool_scalar(values, rows, width)?;
+    Ok(output)
+}
+
+/// Scalar reference for mean pooling.
+pub(crate) fn mean_pool_scalar(values: &[f32], rows: usize, width: usize) -> Result<Vec<f32>> {
+    validate_mean_pool(values, rows, width)?;
 
     let mut output = vec![0.0f32; width];
     for row in 0..rows {
@@ -878,10 +1100,7 @@ pub fn bidirectional_attention(
             for (column, offset) in (start..=end).enumerate() {
                 let key_offset = (offset * num_key_value_heads + key_head) * head_dim;
                 let key_row = &key[key_offset..key_offset + head_dim];
-                let mut dot_product = 0.0f32;
-                for (query_value, key_value) in query_row.iter().zip(key_row) {
-                    dot_product += query_value * key_value;
-                }
+                let dot_product = dot_raw(query_row, key_row);
                 let score = dot_product * scale;
                 if !score.is_finite() {
                     return Err(Error::internal(
@@ -1371,5 +1590,316 @@ mod tests {
             .expect_err("NaN scale must fail"),
             Error::Internal(_)
         ));
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn pseudo_random(length: usize, seed: u64) -> Vec<f32> {
+        let mut state = seed;
+        let mut values = Vec::with_capacity(length);
+        for _ in 0..length {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let unit = ((state >> 40) as f32) / ((1u64 << 24) as f32);
+            values.push(unit * 2.0 - 1.0);
+        }
+        values
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn assert_close_tolerance(actual: &[f32], expected: &[f32], tolerance: f32, label: &str) {
+        assert_eq!(actual.len(), expected.len(), "{label} length mismatch");
+        for (index, (a, e)) in actual.iter().zip(expected).enumerate() {
+            let difference = (a - e).abs();
+            let bound = tolerance * (1.0 + e.abs());
+            assert!(
+                difference <= bound,
+                "{label}[{index}]: {a} differs from {e} by {difference}, bound {bound}"
+            );
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_dot_matches_scalar_for_all_tail_lengths() {
+        assert!(neon::is_available(), "NEON must be available on AArch64");
+        for &length in &[
+            0usize, 1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256,
+            257, 768, 769,
+        ] {
+            let left = pseudo_random(length, 0x1234_5678 + length as u64);
+            let right = pseudo_random(length, 0x9abc_def0 + length as u64);
+            let expected = dot_scalar(&left, &right);
+            let actual = neon::dot(&left, &right);
+            let difference = (actual - expected).abs();
+            let bound = 2e-5 * (1.0 + expected.abs());
+            assert!(
+                difference <= bound,
+                "dot length {length}: {actual} differs from {expected} by {difference}, bound {bound}"
+            );
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_elementwise_operations_match_scalar_exactly() {
+        for &length in &[0usize, 1, 3, 4, 5, 8, 17, 64, 65, 768] {
+            let left = pseudo_random(length, 0x1111 + length as u64);
+            let right = pseudo_random(length, 0x2222 + length as u64);
+            assert_eq!(neon::add(&left, &right), add_scalar(&left, &right));
+            assert_eq!(neon::sub(&left, &right), sub_scalar(&left, &right));
+            assert_eq!(neon::mul(&left, &right), mul_scalar(&left, &right));
+            assert_eq!(neon::scale(&left, 1.25), scale_scalar(&left, 1.25));
+
+            let mut target = left.clone();
+            let mut expected = left.clone();
+            neon::add_in_place(&mut target, &right).expect("NEON in-place addition");
+            add_in_place_scalar(&mut expected, &right);
+            assert_eq!(target, expected);
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_linear_matches_scalar() {
+        for &(rows, in_features, out_features) in &[
+            (1usize, 1usize, 1usize),
+            (1, 3, 2),
+            (2, 5, 3),
+            (3, 7, 4),
+            (4, 8, 4),
+            (2, 16, 17),
+            (3, 17, 5),
+            (1, 768, 768),
+            (2, 768, 3072),
+            (3, 769, 17),
+        ] {
+            let input = pseudo_random(rows * in_features, 0x3333 + rows as u64);
+            let weight = pseudo_random(out_features * in_features, 0x4444 + out_features as u64);
+            let mut expected = vec![0.0f32; rows * out_features];
+            linear_into_scalar(
+                &input,
+                &weight,
+                rows,
+                in_features,
+                out_features,
+                &mut expected,
+            )
+            .expect("scalar linear");
+            let mut actual = vec![0.0f32; rows * out_features];
+            neon::linear_into(
+                &input,
+                &weight,
+                rows,
+                in_features,
+                out_features,
+                &mut actual,
+            )
+            .expect("NEON linear");
+            assert_close_tolerance(
+                &actual,
+                &expected,
+                2e-4,
+                &format!("linear {rows}x{in_features}x{out_features}"),
+            );
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_matmul_matches_scalar() {
+        for &(m, k, n) in &[
+            (1usize, 1usize, 1usize),
+            (2, 3, 2),
+            (3, 5, 4),
+            (2, 17, 3),
+            (1, 64, 65),
+            (4, 768, 17),
+        ] {
+            let left = pseudo_random(m * k, 0x5555 + m as u64);
+            let right = pseudo_random(k * n, 0x6666 + n as u64);
+            let mut expected = vec![0.0f32; m * n];
+            matmul_into_scalar(&left, &right, m, k, n, &mut expected).expect("scalar matmul");
+            let mut actual = vec![0.0f32; m * n];
+            neon::matmul_into(&left, &right, m, k, n, &mut actual).expect("NEON matmul");
+            assert_close_tolerance(&actual, &expected, 2e-4, &format!("matmul {m}x{k}x{n}"));
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_rms_norm_matches_scalar() {
+        for &length in &[1usize, 2, 3, 4, 5, 8, 17, 64, 65, 768] {
+            let input = pseudo_random(length, 0x7777 + length as u64);
+            let weight = pseudo_random(length, 0x8888 + length as u64);
+            let expected = rms_norm_scalar(&input, &weight, 1e-6).expect("scalar RMSNorm");
+            let actual = neon::rms_norm(&input, &weight, 1e-6).expect("NEON RMSNorm");
+            assert_close_tolerance(&actual, &expected, 2e-5, "rms_norm");
+
+            let rows = 3;
+            let width = length;
+            let row_input = pseudo_random(rows * width, 0x9999 + length as u64);
+            let expected = rms_norm_rows_scalar(&row_input, &weight, rows, width, 1e-6)
+                .expect("scalar RMSNorm rows");
+            let actual = neon::rms_norm_rows(&row_input, &weight, rows, width, 1e-6)
+                .expect("NEON RMSNorm rows");
+            assert_close_tolerance(&actual, &expected, 2e-5, "rms_norm_rows");
+
+            let expected = rms_norm_rows_unscaled_scalar(&row_input, rows, width, 1e-6)
+                .expect("scalar unscaled RMSNorm rows");
+            let actual = neon::rms_norm_rows_unscaled(&row_input, rows, width, 1e-6)
+                .expect("NEON unscaled RMSNorm rows");
+            assert_close_tolerance(&actual, &expected, 2e-5, "rms_norm_rows_unscaled");
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_normalization_and_pooling_match_scalar() {
+        for &length in &[1usize, 2, 3, 4, 5, 8, 17, 64, 65, 768] {
+            let input = pseudo_random(length, 0xaaaa + length as u64);
+            let expected = l2_normalize_scalar(&input).expect("scalar L2 normalization");
+            let actual = neon::l2_normalize(&input).expect("NEON L2 normalization");
+            assert_close_tolerance(&actual, &expected, 1e-6, "l2_normalize");
+        }
+
+        for &(rows, width) in &[(1usize, 1usize), (2, 3), (4, 8), (3, 17), (5, 64), (2, 768)] {
+            let values = pseudo_random(rows * width, 0xbbbb + width as u64);
+            let expected = mean_pool_scalar(&values, rows, width).expect("scalar mean pooling");
+            let actual = neon::mean_pool(&values, rows, width).expect("NEON mean pooling");
+            assert_close_tolerance(
+                &actual,
+                &expected,
+                1e-6,
+                &format!("mean_pool {rows}x{width}"),
+            );
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    #[ignore = "microbenchmark; run with --release --ignored --nocapture"]
+    fn neon_microbenchmark() {
+        use std::time::{Duration, Instant};
+
+        assert!(neon::is_available(), "NEON must be available on AArch64");
+
+        fn measure(iterations: usize, mut operation: impl FnMut()) -> Duration {
+            let mut best = Duration::MAX;
+            for _ in 0..3 {
+                let start = Instant::now();
+                for _ in 0..iterations {
+                    operation();
+                }
+                best = best.min(start.elapsed());
+            }
+            best
+        }
+
+        println!("NEON microbenchmark (best of 3 runs)");
+        for &length in &[128usize, 768, 3072] {
+            let left = pseudo_random(length, 0x1000 + length as u64);
+            let right = pseudo_random(length, 0x2000 + length as u64);
+            let iterations = match length {
+                128 => 200_000,
+                768 => 20_000,
+                _ => 5_000,
+            };
+            let scalar = measure(iterations, || {
+                std::hint::black_box(dot_scalar(
+                    std::hint::black_box(&left),
+                    std::hint::black_box(&right),
+                ));
+            });
+            let vector = measure(iterations, || {
+                std::hint::black_box(neon::dot(
+                    std::hint::black_box(&left),
+                    std::hint::black_box(&right),
+                ));
+            });
+            println!(
+                "dot {length:4}: scalar {:>10.3?}  NEON {:>10.3?}  speedup {:>5.2}x",
+                scalar,
+                vector,
+                scalar.as_secs_f64() / vector.as_secs_f64()
+            );
+        }
+
+        for &(rows, in_features, out_features) in &[
+            (1usize, 768usize, 768usize),
+            (16, 768, 3072),
+            (32, 768, 3072),
+        ] {
+            let input = pseudo_random(rows * in_features, 0x3000 + rows as u64);
+            let weight = pseudo_random(out_features * in_features, 0x4000 + out_features as u64);
+            let mut output = vec![0.0f32; rows * out_features];
+            let iterations = match rows {
+                1 => 200,
+                16 => 5,
+                _ => 3,
+            };
+            let scalar = measure(iterations, || {
+                linear_into_scalar(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&weight),
+                    rows,
+                    in_features,
+                    out_features,
+                    std::hint::black_box(&mut output),
+                )
+                .expect("scalar linear");
+            });
+            let vector = measure(iterations, || {
+                neon::linear_into(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&weight),
+                    rows,
+                    in_features,
+                    out_features,
+                    std::hint::black_box(&mut output),
+                )
+                .expect("NEON linear");
+            });
+            println!(
+                "linear {rows}x{in_features}x{out_features}: scalar {:>10.3?}  NEON {:>10.3?}  speedup {:>5.2}x",
+                scalar,
+                vector,
+                scalar.as_secs_f64() / vector.as_secs_f64()
+            );
+        }
+
+        let rows = 32;
+        let width = 768;
+        let input = pseudo_random(rows * width, 0x5000);
+        let weight = pseudo_random(width, 0x6000);
+        let iterations = 1_000;
+        let scalar = measure(iterations, || {
+            let output = rms_norm_rows_scalar(
+                std::hint::black_box(&input),
+                std::hint::black_box(&weight),
+                rows,
+                width,
+                1e-6,
+            )
+            .expect("scalar RMSNorm rows");
+            std::hint::black_box(output);
+        });
+        let vector = measure(iterations, || {
+            let output = neon::rms_norm_rows(
+                std::hint::black_box(&input),
+                std::hint::black_box(&weight),
+                rows,
+                width,
+                1e-6,
+            )
+            .expect("NEON RMSNorm rows");
+            std::hint::black_box(output);
+        });
+        println!(
+            "rms_norm_rows {rows}x{width}: scalar {:>10.3?}  NEON {:>10.3?}  speedup {:>5.2}x",
+            scalar,
+            vector,
+            scalar.as_secs_f64() / vector.as_secs_f64()
+        );
     }
 }

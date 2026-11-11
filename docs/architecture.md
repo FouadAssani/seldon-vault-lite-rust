@@ -355,8 +355,13 @@ owned FP32 data capped at 2^30 elements. TensorView borrows without copying.
 src/tensor/kernels.rs is the deterministic scalar reference. M2 adds linear
 projection, per-row RMSNorm, mean pooling, truncation with renormalization,
 RoPE, and bidirectional grouped-query attention with an optional sliding
-window. SIMD will be compared against this path before any optimization is
-accepted.
+window. M7 adds src/tensor/neon.rs: runtime-selected NEON kernels for dot
+products, elementwise operations, matmul, linear projections, RMSNorm, L2
+normalization, mean pooling, and attention scores. Every NEON wrapper checks
+`is_aarch64_feature_detected!("neon")`, falls back to the scalar path when the
+feature is unavailable, and is covered by scalar-vs-NEON differential tests
+including tail lengths and real model shapes. The scalar path remains the
+correctness oracle.
 
 ### Storage and journal
 
@@ -734,7 +739,11 @@ a dependency or if minos is not 11.0.
    bounded connections, asynchronous ingestion jobs with cooperative
    cancellation, observability counters, and loopback graceful shutdown.
    HNSW, TLS, keep-alive, and MP3 remain future work.
-5. **M7**: NEON and macOS packaging.
+5. **M7**: in progress on branch feat/m7-neon-simd-packaging. NEON kernels
+   with runtime dispatch, scalar fallback, differential tests, and frozen-model
+   parity replay are implemented. The versioned model container, Rust std
+   packer, embedded loading path, and Mach-O size/startup verification remain
+   in progress.
 6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and

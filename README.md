@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M6 implemented on branch feat/m6-http-api — a native HTTP/1.1 API, strict request parsing, bounded connections and ingestion jobs, bearer authentication for LAN binds, observability, and graceful shutdown.**
+**Status: milestone M7 in progress on branch feat/m7-neon-simd-packaging — NEON kernels with runtime dispatch and scalar fallback, differential kernel tests, and frozen-model parity replay for text, image, and audio. macOS ARM64 packaging is in progress.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -36,7 +36,13 @@ shutdown, asynchronous ingestion through a bounded worker queue, cooperative
 cancellation, constant-time bearer authentication, loopback-only shutdown, and
 no TLS. The HTTP API accepts media only as bounded base64 JSON, never as a
 client-supplied path. MP3, streaming audio, TLS, keep-alive, and HNSW remain
-future work.
+future work. M7 adds runtime-selected NEON kernels for dot products, elementwise
+operations, matmul, linear projections, RMSNorm, L2 normalization, mean pooling,
+and attention scores, always with a tested scalar fallback. The M2 text p50 fell
+from 1.485 s to 159 ms and concurrent throughput rose from 2.43 to 24.47
+requests/s on the reference Apple M2 Pro; the frozen text, image, and audio
+parity suites still pass. The versioned model container, Rust std packer,
+embedded loading path, and Mach-O size/startup measurements remain in progress.
 
 ## Requirements
 
@@ -199,6 +205,11 @@ tests are ignored because they load the frozen model and embed several clips:
 | Bounded ingestion queue, worker threads, and cooperative cancellation | implemented (M6) |
 | Bearer token for non-loopback binds; loopback-only shutdown | implemented (M6) |
 | Base64 media input; no client-supplied local paths | implemented (M6) |
+| Runtime-selected NEON kernels with scalar fallback | implemented (M7) |
+| Differential scalar-vs-NEON kernel tests | implemented (M7) |
+| Frozen text, image, and audio parity replay after NEON | implemented (M7) |
+| Versioned model container and Rust std packer | in progress (M7) |
+| Embedded model loading and Mach-O size/startup verification | in progress (M7) |
 | TLS, keep-alive, and HTTP/2 | future work |
 
 ## Documentation
@@ -216,8 +227,9 @@ tests are ignored because they load the frozen model and embed several clips:
 - [ADR 0009 — Image preprocessing and vision tower](docs/adr/0009-image-preprocessing-and-vision.md)
 - [ADR 0010 — Native WAV and audio embeddings](docs/adr/0010-native-wav-and-audio-embeddings.md)
 - [ADR 0011 — Native HTTP API, jobs, and hardening](docs/adr/0011-http-api-and-jobs.md)
+- [ADR 0012 — NEON kernels and macOS ARM64 packaging](docs/adr/0012-neon-simd-and-packaging.md)
 - [HTTP API contract](docs/api.md)
-- [Architecture (M6 state)](docs/architecture.md)
+- [Architecture (M7 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
 - [Tokenizer and prompts](docs/tokenizer.md)

@@ -384,6 +384,14 @@ The FP32 scalar path is the reference. SIMD kernels and optimizations must be
 compared with the scalar path before any performance measurement. Golden tests
 are replayed after each optimization; a gain that breaks parity is rejected.
 
+M7 adds a runtime-selected NEON path. Its four-lane reductions and fused
+multiply-add differ from the scalar reduction order by a few units in the last
+place. `src/tensor/kernels.rs` contains differential tests that compare every
+NEON kernel with the scalar reference, including tail lengths and the real model
+shapes. The official text, image, and audio parity suites were replayed with
+their existing thresholds after the change; no threshold was loosened. The NEON
+reduction order is fixed, so repeated calls remain deterministic.
+
 The text model is immutable after loading and is `Send + Sync`. Repeated calls
 with the same token ids are bit-for-bit deterministic.
 

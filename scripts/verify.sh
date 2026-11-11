@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full verification for milestone M6 (HTTP API, jobs, and hardening).
+# Full verification for milestone M7 (NEON kernels and macOS ARM64 packaging).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 set -euo pipefail
 
@@ -48,4 +48,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M6 verification passed (HTTP API, jobs, and hardening)."
+echo "M7 verification passed (NEON kernels and scalar fallback; packaging still in progress)."
