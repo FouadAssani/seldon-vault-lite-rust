@@ -21,10 +21,10 @@ use crate::error::{Error, Result};
 use crate::index::{Filters, Index, SearchHit, SearchMode, SearchRequest};
 use crate::json::{self, Number, Object, Value};
 use crate::media::preprocess::PreprocessOptions;
-use crate::media::{Image, jpeg, png};
-use crate::model::ImageEmbedder;
+use crate::media::{Audio, Image, jpeg, png, wav};
 use crate::model::prompt::Prompt;
 use crate::model::text::{TextEmbedder, TextModel};
+use crate::model::{AudioEmbedder, ImageEmbedder};
 use crate::storage::model::{ChunkInput, Document, DocumentId, Metadata, Modality};
 use crate::storage::{ReadOnlyStore, Store};
 use crate::{MODEL_CACHE_DIR, MODEL_REVISION, PROGRAM_NAME, TARGET_TRIPLE, VERSION};
@@ -51,7 +51,7 @@ USAGE:
     r#" <COMMAND>
 
 COMMANDS:
-    embed      Embeds text, token ids, or an image and prints a JSON vector
+    embed      Embeds text, token ids, an image, or a WAV clip and prints a JSON vector
     index      Ingests JSONL documents into the persistent store
     search     Runs hybrid, lexical, or exact vector search
     verify     Verifies a data directory without modifying it
@@ -61,7 +61,8 @@ COMMANDS:
 
 EMBED:
     embed [--model-dir <DIR>] [--prompt <NAME>] [--dim <N>]
-          [--text <TEXT> | --ids <ID,ID,...> | --image <PATH>] [TEXT...]
+          [--text <TEXT> | --ids <ID,ID,...> | --image <PATH> | --audio <PATH>]
+          [TEXT...]
 
     --model-dir   Model directory (default: .model-cache/<revision>)
     --prompt      SearchQuery, Document, Classification, Clustering,
@@ -74,9 +75,14 @@ EMBED:
     --text        Text to embed; if omitted, positional TEXT is joined with
                   spaces, and if no text is given standard input is read
     --ids         Comma-separated token ids; bypasses the tokenizer
-    --image       PNG or JPEG image to embed; mutually exclusive with text
-                  and --ids. Image embeddings use the official preprocessing
-                  and vision tower, not a caption or file name.
+    --image       PNG or JPEG image to embed; mutually exclusive with text,
+                  --ids, and --audio. Image embeddings use the official
+                  preprocessing and vision tower, not a caption or file name.
+    --audio       RIFF/WAVE PCM or IEEE-float audio to embed; mutually
+                  exclusive with text, --ids, and --image. Audio is converted
+                  to 16 kHz mono, resampled natively, and embedded through the
+                  official log-mel processor and audio tower. The 30-second
+                  cap applies; no transcription is performed.
 
 INDEX:
     index --data-dir <DIR> [--model-dir <DIR>] [--dim <N>] [--ids]
@@ -90,19 +96,20 @@ INDEX:
     --ids         Diagnostic mode: JSONL lines carry an ids array used
                   instead of tokenizing text; text is still stored for BM25
 
-    Each JSONL line is an object with id and exactly one of text or image,
-    plus optional title, source, and metadata object. Image lines are decoded
-    with the native PNG/JPEG decoders and embedded through the vision tower;
-    their chunk text is empty, so they participate in vector search but not
-    BM25. When source is omitted for an image, the image path becomes the
-    source. Blank lines are ignored. Duplicate ids and unknown fields are
-    rejected before any write.
+    Each JSONL line is an object with id and exactly one of text, image, or
+    audio, plus optional title, source, and metadata object. Image lines are
+    decoded with the native PNG/JPEG decoders and embedded through the vision
+    tower; audio lines are decoded with the native WAV decoder and embedded
+    through the audio tower. Their chunk text is empty, so they participate in
+    vector search but not BM25. When source is omitted for an image or audio
+    document, its path becomes the source. Blank lines are ignored. Duplicate
+    ids and unknown fields are rejected before any write.
 
 SEARCH:
     search --data-dir <DIR> [--model-dir <DIR>] [--dim <N>]
            [--mode hybrid|lexical|vector] [--limit <N>] [--offset <N>]
            [--filter KEY=VALUE]... [--ids <ID,ID,...>] [--image <PATH>]
-           [QUERY...]
+           [--audio <PATH>] [QUERY...]
 
     --data-dir    Data directory holding the journal and writer lock
     --model-dir   Model directory (default: .model-cache/<revision>)
@@ -113,7 +120,9 @@ SEARCH:
     --filter      Exact metadata equality filter; repeatable
     --ids         Diagnostic query ids for vector or hybrid mode
     --image       PNG or JPEG image query; requires vector mode and cannot be
-                  combined with query text or --ids
+                  combined with query text, --ids, or --audio
+    --audio       RIFF/WAVE audio query; requires vector mode and cannot be
+                  combined with query text, --ids, or --image
     --vision-tokens  Visual token budget for an image query: 70, 140, 280,
                   560, or 1120 (default: 280)
 
@@ -193,6 +202,8 @@ pub enum EmbedInput {
     Ids(Vec<u32>),
     /// PNG or JPEG image read from the given path.
     Image(PathBuf),
+    /// RIFF/WAVE audio read from the given path.
+    Audio(PathBuf),
     /// Text read from standard input.
     Stdin,
 }
@@ -235,6 +246,8 @@ pub struct SearchArgs {
     pub input: SearchInput,
     /// Optional image query for vector mode.
     pub image: Option<PathBuf>,
+    /// Optional audio query for vector mode.
+    pub audio: Option<PathBuf>,
     /// Visual token budget for an image query.
     pub vision_budget: usize,
     /// Diagnostic query token ids for vector or hybrid mode.
@@ -366,6 +379,7 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
     let mut ids = None;
     let mut explicit_text = None;
     let mut image = None;
+    let mut audio = None;
     let mut text_parts = Vec::new();
     let mut index = 0;
 
@@ -413,6 +427,13 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
                 }
                 image = Some(PathBuf::from(value));
             }
+            "--audio" => {
+                let value = next_value(&args, &mut index, "--audio")?;
+                if audio.is_some() {
+                    return Err(Error::usage("--audio was provided more than once"));
+                }
+                audio = Some(PathBuf::from(value));
+            }
             "-h" | "--help" => return Ok(Command::Help),
             other if other.starts_with('-') => {
                 return Err(Error::usage(format!("unknown option {other}")));
@@ -435,8 +456,17 @@ fn parse_embed(args: Vec<String>) -> Result<Command> {
             "--image cannot be combined with text or token ids",
         ));
     }
+    if audio.is_some()
+        && (ids.is_some() || explicit_text.is_some() || !text_parts.is_empty() || image.is_some())
+    {
+        return Err(Error::usage(
+            "--audio cannot be combined with text, token ids, or an image",
+        ));
+    }
 
-    let input = if let Some(path) = image {
+    let input = if let Some(path) = audio {
+        EmbedInput::Audio(path)
+    } else if let Some(path) = image {
         EmbedInput::Image(path)
     } else if let Some(ids) = ids {
         EmbedInput::Ids(ids)
@@ -551,6 +581,7 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
     let mut filters = Filters::new();
     let mut ids = None;
     let mut image = None;
+    let mut audio = None;
     let mut vision_budget = crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS;
     let mut query_parts = Vec::new();
     let mut index = 0;
@@ -606,6 +637,13 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
                 }
                 image = Some(PathBuf::from(value));
             }
+            "--audio" => {
+                let value = next_value(&args, &mut index, "--audio")?;
+                if audio.is_some() {
+                    return Err(Error::usage("--audio was provided more than once"));
+                }
+                audio = Some(PathBuf::from(value));
+            }
             "--vision-tokens" => {
                 let value = next_value(&args, &mut index, "--vision-tokens")?;
                 vision_budget = parse_vision_budget(value)?;
@@ -626,13 +664,23 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         ));
     }
     if image.is_some() {
-        if ids.is_some() || !query_parts.is_empty() {
+        if ids.is_some() || !query_parts.is_empty() || audio.is_some() {
             return Err(Error::usage(
-                "--image cannot be combined with query text or --ids",
+                "--image cannot be combined with query text, --ids, or --audio",
             ));
         }
         if mode != SearchMode::Vector {
             return Err(Error::usage("--image requires vector search mode"));
+        }
+    }
+    if audio.is_some() {
+        if ids.is_some() || !query_parts.is_empty() || image.is_some() {
+            return Err(Error::usage(
+                "--audio cannot be combined with query text, --ids, or an image",
+            ));
+        }
+        if mode != SearchMode::Vector {
+            return Err(Error::usage("--audio requires vector search mode"));
         }
     }
     let input = if query_parts.is_empty() {
@@ -651,6 +699,7 @@ fn parse_search(args: Vec<String>) -> Result<Command> {
         filters,
         input,
         image,
+        audio,
         vision_budget,
         ids,
     }))
@@ -761,6 +810,13 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
             )?;
             write_vector(&embedding, stdout)?;
         }
+        EmbedInput::Audio(path) => {
+            let audio = decode_audio(&path)?;
+            let embedder = AudioEmbedder::load(&args.model_dir)?;
+            validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+            let embedding = embedder.embed(&audio, args.dimension)?;
+            write_vector(&embedding, stdout)?;
+        }
         EmbedInput::Stdin => {
             let text = read_stdin_bounded(MAX_STDIN_BYTES)?;
             let embedder = TextEmbedder::load(&args.model_dir)?;
@@ -770,6 +826,17 @@ fn run_embed<W: Write>(args: EmbedArgs, stdout: &mut W) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn decode_audio(path: &Path) -> Result<Audio> {
+    let extension = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(|value| value.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("wav") => wav::decode_file(path),
+        _ => Err(Error::usage("audio input must have a .wav extension")),
+    }
 }
 
 fn decode_image(path: &Path) -> Result<Image> {
@@ -811,20 +878,54 @@ fn run_index<W: Write>(args: IndexArgs, stdout: &mut W) -> Result<()> {
             chunks += chunk_ids.len();
         }
         write_index_summary(stdout, &args.data_dir, &store, ingested, chunks)?;
-    } else if pending.iter().any(|document| document.image.is_some()) {
-        let embedder = ImageEmbedder::load(&args.model_dir)?;
-        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+    } else if pending
+        .iter()
+        .any(|document| document.image.is_some() || document.audio.is_some())
+    {
+        let has_image = pending.iter().any(|document| document.image.is_some());
+        let has_audio = pending.iter().any(|document| document.audio.is_some());
+        let image_embedder = if has_image {
+            Some(ImageEmbedder::load(&args.model_dir)?)
+        } else {
+            None
+        };
+        let audio_embedder = if has_audio {
+            Some(AudioEmbedder::load(&args.model_dir)?)
+        } else {
+            None
+        };
+        if let Some(embedder) = &image_embedder {
+            validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        }
+        if let Some(embedder) = &audio_embedder {
+            validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        }
         let mut store = Store::open(&args.data_dir)?;
         for pending in pending {
             let embedding = if let Some(path) = &pending.image {
                 let image = decode_image(path)?;
-                embedder.embed(
-                    &image,
-                    args.dimension,
-                    PreprocessOptions::new(args.vision_budget)?,
-                )?
-            } else {
+                image_embedder
+                    .as_ref()
+                    .ok_or_else(|| Error::internal("image embedder was not loaded"))?
+                    .embed(
+                        &image,
+                        args.dimension,
+                        PreprocessOptions::new(args.vision_budget)?,
+                    )?
+            } else if let Some(path) = &pending.audio {
+                let audio = decode_audio(path)?;
+                audio_embedder
+                    .as_ref()
+                    .ok_or_else(|| Error::internal("audio embedder was not loaded"))?
+                    .embed(&audio, args.dimension)?
+            } else if let Some(embedder) = &image_embedder {
                 embedder.embed_text(&pending.text, Prompt::Document, args.dimension)?
+            } else if let Some(embedder) = &audio_embedder {
+                embedder.embed_text(&pending.text, Prompt::Document, args.dimension)?
+            } else {
+                return Err(Error::internal(
+                    "multimodal index branch has no loaded embedder",
+                ));
             };
             let chunk_ids = store.put_document(
                 pending.document,
@@ -907,6 +1008,24 @@ fn run_search<W: Write>(args: SearchArgs, stdout: &mut W) -> Result<()> {
             args.dimension,
             PreprocessOptions::new(args.vision_budget)?,
         )?;
+        let store = ReadOnlyStore::open(&args.data_dir)?;
+        let index = Index::build_read_only(&store)?;
+        let mut request = SearchRequest::new(SearchMode::Vector, args.limit);
+        request.offset = args.offset;
+        request.filters = args.filters;
+        request.text = None;
+        request.embedding = Some(&embedding);
+        let hits = index.search(&request)?;
+        return write_hits(stdout, &hits);
+    }
+    if let Some(path) = &args.audio {
+        if args.mode != SearchMode::Vector {
+            return Err(Error::usage("--audio requires vector search mode"));
+        }
+        let audio = decode_audio(path)?;
+        let embedder = AudioEmbedder::load(&args.model_dir)?;
+        validate_dimension(args.dimension, embedder.model().config().embedding_dim())?;
+        let embedding = embedder.embed(&audio, args.dimension)?;
         let store = ReadOnlyStore::open(&args.data_dir)?;
         let index = Index::build_read_only(&store)?;
         let mut request = SearchRequest::new(SearchMode::Vector, args.limit);
@@ -1129,6 +1248,7 @@ struct PendingDocument {
     document: Document,
     text: String,
     image: Option<PathBuf>,
+    audio: Option<PathBuf>,
     ids: Option<Vec<u32>>,
 }
 
@@ -1193,25 +1313,30 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
             None => None,
         };
         let image = optional_string_field(object, "image", line_index)?.map(PathBuf::from);
-        if text.is_some() == image.is_some() {
+        let audio = optional_string_field(object, "audio", line_index)?.map(PathBuf::from);
+        let modality_count = usize::from(text.is_some())
+            + usize::from(image.is_some())
+            + usize::from(audio.is_some());
+        if modality_count != 1 {
             return Err(Error::usage(format!(
-                "line {} must have exactly one of text or image",
+                "line {} must have exactly one of text, image, or audio",
                 line_index + 1
             )));
         }
-        if ids_mode && image.is_some() {
+        if ids_mode && (image.is_some() || audio.is_some()) {
             return Err(Error::usage(format!(
-                "line {} cannot combine --ids with an image",
+                "line {} cannot combine --ids with an image or audio",
                 line_index + 1
             )));
         }
 
-        let (mut document, text) = match (&image, text) {
-            (Some(_), None) => (Document::new(document_id, Modality::Image), String::new()),
-            (None, Some(text)) => (Document::new(document_id, Modality::Text), text),
+        let (mut document, text) = match (&image, &audio, text) {
+            (Some(_), None, None) => (Document::new(document_id, Modality::Image), String::new()),
+            (None, Some(_), None) => (Document::new(document_id, Modality::Audio), String::new()),
+            (None, None, Some(text)) => (Document::new(document_id, Modality::Text), text),
             _ => {
                 return Err(Error::internal(
-                    "index parser accepted an invalid text/image combination",
+                    "index parser accepted an invalid modality combination",
                 ));
             }
         };
@@ -1228,6 +1353,12 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
                     .to_str()
                     .ok_or_else(|| Error::usage("image path is not valid UTF-8"))?,
             )?;
+        } else if let Some(audio) = &audio {
+            document = document.with_source(
+                audio
+                    .to_str()
+                    .ok_or_else(|| Error::usage("audio path is not valid UTF-8"))?,
+            )?;
         }
         let metadata = parse_metadata(object.get("metadata"), line_index)?;
         document = document.with_metadata(metadata);
@@ -1242,6 +1373,7 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
             document,
             text,
             image,
+            audio,
             ids,
         });
     }
@@ -1255,7 +1387,7 @@ fn parse_index_documents(input: &str, ids_mode: bool) -> Result<Vec<PendingDocum
 fn allowed_index_field(key: &str, ids_mode: bool) -> bool {
     matches!(
         key,
-        "id" | "text" | "image" | "title" | "source" | "metadata"
+        "id" | "text" | "image" | "audio" | "title" | "source" | "metadata"
     ) || (ids_mode && key == "ids")
 }
 
@@ -1566,6 +1698,126 @@ mod tests {
         }
         let error = parse_index_documents("{\"id\":\"img\",\"image\":\"x.png\"}", true)
             .expect_err("ids mode cannot combine with an image");
+        assert!(matches!(error, Error::Usage(_)), "{error}");
+    }
+
+    #[test]
+    fn parses_audio_embed_and_search_queries() {
+        let command = parse_args(&[
+            "embed",
+            "--audio",
+            "fixtures/media/audio/short_tone_100ms.wav",
+            "--dim",
+            "128",
+        ])
+        .expect("audio embed arguments");
+        let Command::Embed(args) = command else {
+            panic!("expected embed command");
+        };
+        assert_eq!(args.dimension, 128);
+        assert_eq!(
+            args.input,
+            EmbedInput::Audio(PathBuf::from("fixtures/media/audio/short_tone_100ms.wav"))
+        );
+
+        let command = parse_args(&[
+            "search",
+            "--data-dir",
+            "data",
+            "--mode",
+            "vector",
+            "--audio",
+            "fixtures/media/audio/rain_noise_2s.wav",
+        ])
+        .expect("audio search arguments");
+        let Command::Search(args) = command else {
+            panic!("expected search command");
+        };
+        assert_eq!(args.mode, SearchMode::Vector);
+        assert_eq!(
+            args.audio,
+            Some(PathBuf::from("fixtures/media/audio/rain_noise_2s.wav"))
+        );
+        assert_eq!(args.image, None);
+    }
+
+    #[test]
+    fn rejects_audio_combined_with_text_image_or_ids() {
+        for args in [
+            &["embed", "--audio", "a.wav", "--text", "hello"][..],
+            &["embed", "--audio", "a.wav", "hello"],
+            &["embed", "--audio", "a.wav", "--ids", "1,2"],
+            &["embed", "--audio", "a.wav", "--image", "image.png"],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--audio",
+                "a.wav",
+                "hello",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "vector",
+                "--audio",
+                "a.wav",
+                "--ids",
+                "1,2",
+            ],
+            &[
+                "search",
+                "--data-dir",
+                "data",
+                "--mode",
+                "hybrid",
+                "--audio",
+                "a.wav",
+            ],
+        ] {
+            let error = parse_args(args).expect_err("audio input cannot be combined");
+            assert!(matches!(error, Error::Usage(_)), "args {args:?}: {error}");
+            assert!(
+                error.to_string().contains("--audio"),
+                "args {args:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_audio_documents_and_defaults_the_source() {
+        let input = "{\"id\":\"aud-1\",\"audio\":\"fixtures/media/audio/rain_noise_2s.wav\",\"title\":\"Rain\"}\n";
+        let documents = parse_index_documents(input, false).expect("audio document");
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].document.modality(), Modality::Audio);
+        assert_eq!(
+            documents[0].document.source(),
+            Some("fixtures/media/audio/rain_noise_2s.wav")
+        );
+        assert_eq!(documents[0].document.title(), Some("Rain"));
+        assert_eq!(documents[0].text, "");
+        assert!(documents[0].audio.is_some());
+        assert!(documents[0].image.is_none());
+        assert!(documents[0].ids.is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_audio_documents() {
+        for input in [
+            "{\"id\":\"aud\",\"text\":\"hello\",\"audio\":\"x.wav\"}",
+            "{\"id\":\"aud\",\"image\":\"x.png\",\"audio\":\"x.wav\"}",
+            "{\"id\":\"aud\"}",
+        ] {
+            let error =
+                parse_index_documents(input, false).expect_err("invalid audio document must fail");
+            assert!(matches!(error, Error::Usage(_)), "{error}");
+        }
+        let error = parse_index_documents("{\"id\":\"aud\",\"audio\":\"x.wav\"}", true)
+            .expect_err("ids mode cannot combine with audio");
         assert!(matches!(error, Error::Usage(_)), "{error}");
     }
 
@@ -1939,6 +2191,7 @@ mod tests {
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
                 image: None,
+                audio: None,
                 vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),
@@ -1976,6 +2229,7 @@ mod tests {
                 filters: Filters::new(),
                 input: SearchInput::Text(String::new()),
                 image: None,
+                audio: None,
                 vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
@@ -1998,6 +2252,7 @@ mod tests {
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
                 image: None,
+                audio: None,
                 vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: Some(vec![1, 5, 7, 9, 2]),
             }),
@@ -2132,6 +2387,7 @@ mod tests {
                 filters: Filters::new(),
                 input: SearchInput::Text("rust".to_owned()),
                 image: None,
+                audio: None,
                 vision_budget: crate::media::preprocess::DEFAULT_MAX_SOFT_TOKENS,
                 ids: None,
             }),

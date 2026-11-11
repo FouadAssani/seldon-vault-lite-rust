@@ -350,3 +350,99 @@ fn embed_rejects_an_unknown_image_extension() {
     let text = stderr(&output);
     assert!(text.contains("extension"), "stderr: {text}");
 }
+
+#[test]
+#[ignore = "loads the full model and embeds audio documents; execute manually"]
+fn audio_documents_can_be_indexed_and_found_by_text_or_audio() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir =
+        std::env::temp_dir().join(format!("seldon-cli-audio-{}-{unique}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let jsonl = dir.join("audio.jsonl");
+    std::fs::write(
+        &jsonl,
+        concat!(
+            "{\"id\":\"rain\",\"audio\":\"fixtures/media/audio/rain_noise_2s.wav\",\"title\":\"Rain\"}\n",
+            "{\"id\":\"music\",\"audio\":\"fixtures/media/audio/music_chords_2s.wav\",\"title\":\"Music\"}\n",
+            "{\"id\":\"speech\",\"audio\":\"fixtures/media/audio/french_speech.wav\",\"title\":\"Speech\"}\n",
+        ),
+    )
+    .expect("write JSONL");
+
+    let output = run(&[
+        "index",
+        "--data-dir",
+        dir.to_str().expect("UTF-8 temp dir"),
+        "--model-dir",
+        ".model-cache/f9972ac22e696a105c482202646979e33e4b5a1e",
+        "--dim",
+        "768",
+        jsonl.to_str().expect("UTF-8 JSONL path"),
+    ]);
+    assert!(output.status.success(), "index stderr: {}", stderr(&output));
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        dir.to_str().expect("UTF-8 temp dir"),
+        "--model-dir",
+        ".model-cache/f9972ac22e696a105c482202646979e33e4b5a1e",
+        "--dim",
+        "768",
+        "--mode",
+        "vector",
+        "--limit",
+        "3",
+        "rain falling",
+    ]);
+    assert!(
+        output.status.success(),
+        "search stderr: {}",
+        stderr(&output)
+    );
+    let value = seldon_vault_lite::json::parse(stdout(&output).trim()).expect("search JSON");
+    let hits = value.as_array().expect("hits array");
+    assert_eq!(hits.len(), 3);
+    let top = hits[0].as_object().expect("hit object");
+    assert_eq!(
+        top.get("source").and_then(|value| value.as_str()),
+        Some("fixtures/media/audio/rain_noise_2s.wav")
+    );
+    assert_eq!(
+        top.get("modality").and_then(|value| value.as_str()),
+        Some("audio")
+    );
+
+    let output = run(&[
+        "search",
+        "--data-dir",
+        dir.to_str().expect("UTF-8 temp dir"),
+        "--model-dir",
+        ".model-cache/f9972ac22e696a105c482202646979e33e4b5a1e",
+        "--dim",
+        "768",
+        "--mode",
+        "vector",
+        "--limit",
+        "3",
+        "--audio",
+        "fixtures/media/audio/music_chords_2s.wav",
+    ]);
+    assert!(
+        output.status.success(),
+        "audio search stderr: {}",
+        stderr(&output)
+    );
+    let value = seldon_vault_lite::json::parse(stdout(&output).trim()).expect("search JSON");
+    let hits = value.as_array().expect("hits array");
+    assert_eq!(hits.len(), 3);
+    let top = hits[0].as_object().expect("hit object");
+    assert_eq!(
+        top.get("source").and_then(|value| value.as_str()),
+        Some("fixtures/media/audio/music_chords_2s.wav")
+    );
+}

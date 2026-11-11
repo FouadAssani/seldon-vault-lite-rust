@@ -1,11 +1,12 @@
 # Formats and binary primitives
 
-This document describes the formats implemented through milestone M4 (image
-path started) and the validation rules that protect the product from hostile
+This document describes the formats implemented through milestone M5 (audio
+path added) and the validation rules that protect the product from hostile
 input. ADR 0002 is the binary format decision record, ADR 0004 covers the
 text-embedding numerical path, ADR 0005 covers persistent storage and hybrid
-search, ADR 0007 covers native PNG/DEFLATE decoding, and ADR 0008 covers native
-baseline JPEG decoding; this document is the operational reference.
+search, ADR 0007 covers native PNG/DEFLATE decoding, ADR 0008 covers native
+baseline JPEG decoding, and ADR 0010 covers native WAV decoding and audio
+embeddings; this document is the operational reference.
 
 ## Trust boundary
 
@@ -351,6 +352,88 @@ Image documents are stored with modality image and indexed from the CLI;
 text-to-image and image-to-image vector search are implemented and covered by
 reference ranking tests. Broader ranking quality and vision performance remain
 future work. See ADR 0009.
+
+## WAV and audio preprocessing
+
+Milestone M5 adds a native RIFF/WAVE decoder in src/media/wav.rs, mono
+conversion and resampling in src/media/audio.rs, and the official log-mel
+processor in src/media/audio_preprocess.rs.
+
+### Supported WAV variants
+
+- RIFF/WAVE container.
+- PCM (format tag 1) with 8, 16, 24, or 32 bits per sample.
+- IEEE float (format tag 3) with 32 or 64 bits per sample.
+- WAVE_FORMAT_EXTENSIBLE (0xFFFE) when its sub-format is PCM or IEEE float.
+- One to eight channels, 8 kHz to 192 kHz.
+
+Rejected as unsupported: ADPCM, A-law, mu-law, MP3, and every other compressed
+codec; 12-bit PCM; float widths other than 32 or 64. Rejected as corrupt:
+truncated RIFF headers, chunk sizes that cross the RIFF end, missing `fmt ` or
+`data`, duplicate chunks, block alignment or byte rate that disagrees with the
+declared channels and bits, a data size that is not a multiple of the block
+alignment, a zero-frame payload, and non-finite float samples.
+
+Channels are downmixed by averaging. PCM values are converted to FP32 in
+[-1, 1]. The decoder returns mono FP32 at the source rate.
+
+### Resampling
+
+The model rate is 16 kHz. A non-16 kHz source is converted with a normalized
+windowed-sinc kernel: 32 taps, a Hann window, and a cutoff of
+`min(1, target/source)` to suppress aliasing when downsampling. The output is
+truncated to 480,000 samples, matching the official feature-extractor defaults
+`max_length=480000` and `truncation=True`. The conversion is deterministic and
+uses only `std`.
+
+### Caps
+
+| Limit | Value |
+|---|---|
+| WAV file size | 64 MiB |
+| WAV data chunk | 64 MiB |
+| Channels | 8 |
+| Source sample rate | 8 kHz to 192 kHz |
+| Source frames | 5,760,000 (30 s at 192 kHz) |
+| Model samples | 480,000 (30 s at 16 kHz) |
+| Mel frames | 3,000 |
+| Mel features | 128 |
+
+### Official log-mel pipeline
+
+1. Pad the 16 kHz mono waveform to a multiple of 128 samples.
+2. Prepend 160 zeros (semicausal padding).
+3. Extract 321-sample windows every 160 samples; drop the last sample of each
+   window because preemphasis is zero.
+4. Multiply by a periodic Hann window `0.5 - 0.5 cos(2πn/320)`.
+5. Zero-pad to 512 samples and compute the real FFT; keep 257 magnitude bins.
+6. Project onto 128 HTK mel filters from 0 Hz to 8000 Hz, with no area
+   normalization.
+7. Compute `ln(mel + 0.001)`.
+8. Mark a frame valid only when the last sample of its 321-sample analysis
+   window is real audio. Invalid frames are exactly zero.
+
+The FFT and mel projection use f64 accumulation and round to f32 once. The
+preprocessing golden compares frame counts, mask counts, and first values; the
+path is not claimed bit-exact because a different radix-2 FFT can differ in the
+last f32 bit. The observed maximum absolute difference on the short reference
+clip is `4.77e-7`.
+
+### Fixtures
+
+fixtures/media/audio/ contains six short WAV excerpts. The synthetic clips were
+generated with deterministic Python code; the French speech was generated with
+the macOS `say` French voice and converted to 16 kHz mono PCM.
+fixtures/media/audio_preprocess_golden.json records the padded sample count,
+mel-frame count, valid-frame count, feature fingerprint, and first feature
+values for every clip. Provenance and fingerprints are recorded in
+fixtures/media/README.md. The golden generator is
+scripts/generate_audio_goldens.py and is laboratory-only.
+
+Audio documents are stored with modality audio and indexed from the CLI;
+text-to-audio and audio-to-audio vector search are implemented and covered by
+reference ranking tests. MP3, streaming audio, and broader ranking quality
+remain future work. See ADR 0010.
 
 ## Storage journal
 

@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "model": "google/embeddinggemma-2",
+  "revision": "f9972ac22e696a105c482202646979e33e4b5a1e",
+  "cases": [
+    {
+      "name": "silence_1s",
+      "source": "fixtures/media/audio/silence_1s.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 16000,
+      "padded_samples": 16000,
+      "mel_frames": 99,
+      "valid_mel_frames": 99,
+      "audio_tokens": 25,
+      "mel_features_sha256": "686d8f234eec98a082e45c5f291db725fb966aaba896d1e7e7edfe82c27a42ba",
+      "mel_features_first": [
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447,
+        -6.907755374908447
+      ]
+    },
+    {
+      "name": "short_tone_100ms",
+      "source": "fixtures/media/audio/short_tone_100ms.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 1600,
+      "padded_samples": 1664,
+      "mel_frames": 10,
+      "valid_mel_frames": 9,
+      "audio_tokens": 3,
+      "mel_features_sha256": "8d59c73aceb5707ed8e19d90a7b15dae46719e6e13dcf8a30d1f174e0fda6646",
+      "mel_features_first": [
+        -6.907755374908447,
+        -3.117255687713623,
+        -4.253085613250732,
+        -3.385192632675171,
+        -3.8739700317382812,
+        -2.3105406761169434,
+        -2.5824899673461914,
+        -1.7595269680023193
+      ]
+    },
+    {
+      "name": "long_tone_3s",
+      "source": "fixtures/media/audio/long_tone_3s.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 48000,
+      "padded_samples": 48000,
+      "mel_frames": 299,
+      "valid_mel_frames": 299,
+      "audio_tokens": 75,
+      "mel_features_sha256": "2e254424d37b38a240096a0a59ec450beeaf824d30af4ddf8122e56a8b34b780",
+      "mel_features_first": [
+        -6.907755374908447,
+        -3.2563235759735107,
+        -4.38489294052124,
+        -2.8477230072021484,
+        -3.3445050716400146,
+        -1.4226137399673462,
+        -1.6964377164840698,
+        -0.5798071622848511
+      ]
+    },
+    {
+      "name": "french_speech",
+      "source": "fixtures/media/audio/french_speech.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 40000,
+      "padded_samples": 40064,
+      "mel_frames": 250,
+      "valid_mel_frames": 249,
+      "audio_tokens": 63,
+      "mel_features_sha256": "9ecde8160e675b3af4ceafebe01367574d86e0dc61c66c110c9c6d943af0c716",
+      "mel_features_first": [
+        -6.907755374908447,
+        -0.9872086644172668,
+        -2.1670291423797607,
+        -0.8409037590026855,
+        -1.3475087881088257,
+        -0.6867878437042236,
+        -0.9612954258918762,
+        -0.5211461782455444
+      ]
+    },
+    {
+      "name": "music_chords_2s",
+      "source": "fixtures/media/audio/music_chords_2s.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 32000,
+      "padded_samples": 32000,
+      "mel_frames": 199,
+      "valid_mel_frames": 199,
+      "audio_tokens": 50,
+      "mel_features_sha256": "bb6d169ce9be3250ae1b35a4d2c7632732d8b46424a28b7682c2b0b273198c09",
+      "mel_features_first": [
+        -6.907755374908447,
+        -3.9084041118621826,
+        -4.987005233764648,
+        -3.6980624198913574,
+        -4.179820537567139,
+        -3.5096051692962646,
+        -3.7742083072662354,
+        -2.4685659408569336
+      ]
+    },
+    {
+      "name": "rain_noise_2s",
+      "source": "fixtures/media/audio/rain_noise_2s.wav",
+      "sample_rate": 16000,
+      "channels": 1,
+      "sample_width": 2,
+      "samples": 32000,
+      "padded_samples": 32000,
+      "mel_frames": 199,
+      "valid_mel_frames": 199,
+      "audio_tokens": 50,
+      "mel_features_sha256": "b2127f4882c07cc444342fd24d10f98a9eb1e84e88a86387a395fee27ae792d5",
+      "mel_features_first": [
+        -6.907755374908447,
+        1.4849555492401123,
+        0.2995665371417999,
+        1.1764014959335327,
+        0.6684665083885193,
+        0.9418569803237915,
+        0.6668436527252197,
+        0.8176822662353516
+      ]
+    }
+  ]
+}

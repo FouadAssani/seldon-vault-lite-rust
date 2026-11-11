@@ -131,3 +131,59 @@ No intra-request parallelism, batching, or SIMD is implemented at M4. M7 must
 profile the image path before optimizing, compare every change with the image
 goldens and the preprocessing fingerprints, and record CPU, compiler, model
 revision, memory, and parameters with the new numbers.
+
+## Audio path baseline — milestone M5
+
+The audio parity path measures one end-to-end audio embedding with the frozen
+model in the release profile. It is a correctness baseline, not an optimized
+result.
+
+| Item | Value |
+|---|---|
+| Date | 2026-11-11 |
+| CPU | Apple M2 Pro, 10 cores |
+| Memory | 16 GiB |
+| OS | macOS 26.5.1 (build 25F80) |
+| Target | aarch64-apple-darwin |
+| Rust | rustc 1.99.1, cargo 1.99.1 |
+| Profile | release: opt-level = 3, thin LTO, one codegen unit |
+| Model | google/embeddinggemma-2 at f9972ac22e696a105c482202646979e33e4b5a1e |
+| Output | 768 dimensions, L2-normalized |
+
+| Input | Duration | Audio tokens | Wall time | Max RSS |
+|---|---|---|---|---|
+| `fixtures/media/audio/short_tone_100ms.wav` | 0.1 s | 3 | 16.25 s | 4,028,203,008 bytes (~3.75 GiB) |
+| `fixtures/media/audio/rain_noise_2s.wav` | 2.0 s | 50 | 31.05 s | 4,037,902,336 bytes (~3.76 GiB) |
+
+Both runs include loading the 1.49 GB Safetensors file, converting the text and
+audio weights to FP32, the WAV decode, mono conversion and resampling, the
+log-mel preprocessing, the 12-layer audio tower, the text encoder over the
+audio prompt, and the final projection. The audio tower dominates: the 0.1 s
+clip already produces three soft tokens, and the 2 s clip produces 50 tokens
+through 12 layers of chunked attention and a 4,096-wide feed-forward. The
+scalar path is not practical for 30 s clips yet; M7 profiling will use these
+runs as the correctness baseline.
+
+Reproduction:
+
+```bash
+cargo build --release --target aarch64-apple-darwin
+/usr/bin/time -l target/aarch64-apple-darwin/release/seldon-vault-lite \
+  embed --audio fixtures/media/audio/short_tone_100ms.wav --dim 768
+/usr/bin/time -l target/aarch64-apple-darwin/release/seldon-vault-lite \
+  embed --audio fixtures/media/audio/rain_noise_2s.wav --dim 768
+```
+
+Interpretation:
+
+- The short clip's first vector values match the official golden exactly at the
+  displayed precision; the full parity test checks cosine and absolute
+  tolerance.
+- Audio preprocessing is a small fraction of the time; the tower and weight
+  loading dominate.
+- Resident memory is about 3.76 GiB because the text and audio weight sets are
+  held in FP32 simultaneously. The image path has a similar peak with the
+  vision tower.
+- No batching, SIMD, or quantization is applied at M5. Any optimization must
+  replay the six-case audio parity tests and the text-to-audio ranking test
+  before reporting a gain.

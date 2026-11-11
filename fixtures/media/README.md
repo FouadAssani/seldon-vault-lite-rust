@@ -1,9 +1,9 @@
-# PNG and JPEG decoder fixtures
+# PNG, JPEG, and WAV decoder fixtures
 
-These tiny files exercise the native image decoders at milestone M4. They are
-committed because they are a few hundred bytes to a few kilobytes each, not
-model-scale data. They are not official image-preprocessing or embedding
-goldens.
+These tiny files exercise the native image and audio decoders at milestones M4
+and M5. They are committed because they are a few hundred bytes to a few
+kilobytes each, not model-scale data. They are not official image-preprocessing
+or embedding goldens.
 
 ## Provenance
 
@@ -168,3 +168,82 @@ and the reference environment. A replacement fixture must record the same
 fields, the generator version, the PyTorch and Transformers versions, and the
 new SHA-256. The Rust tests compare resized bytes, padded patch values, and
 positions exactly; no tolerance is accepted for preprocessing.
+
+## Audio fixtures
+
+fixtures/media/audio/ contains six 16 kHz mono WAV excerpts used by the audio
+decoder and preprocessing tests, plus three small WAV files used to exercise
+bit-depth and resampling conversions.
+
+### Provenance
+
+Generated outside the product on 2026-11-11. The synthetic clips were produced
+with Python 3.13 and NumPy 2.5.4 using deterministic code; no third-party audio
+library or network access was used. The French speech clip was generated with
+the macOS `say` voice "Eddy (French (France))" and converted to 16 kHz mono
+16-bit PCM with macOS `afconvert`:
+
+```text
+say -v 'Eddy (French (France))' -o /tmp/french_speech.aiff \
+  'Bonjour, ceci est un test de recherche audio en francais. Les oiseaux chantent dans le jardin.'
+afconvert -f WAVE -d LEI16@16000 /tmp/french_speech.aiff /tmp/french_speech.wav
+```
+
+The first 2.5 seconds were kept. The synthetic clips are:
+
+- silence_1s.wav: 1 s of zeros.
+- short_tone_100ms.wav: 100 ms 440 Hz sine with 5 ms fades.
+- long_tone_3s.wav: 3 s 220 Hz tone with 440 and 660 Hz harmonics and 20 ms
+  fades.
+- music_chords_2s.wav: 2 s of four 0.5 s chords (C, Am, F, G) with partials and
+  a deterministic envelope.
+- rain_noise_2s.wav: 2 s of deterministic low-passed noise with sparse droplet
+  impulses (NumPy seed 20261111).
+- stereo_44100_tone.wav: 0.5 s stereo 44.1 kHz 440/660 Hz tones, used for
+  downmix and resampling tests.
+- tone_24bit_50ms.wav and tone_8bit_50ms.wav: 50 ms 500 Hz tones used for
+  PCM bit-depth tests.
+
+### Inventory
+
+| File | Size | SHA-256 | Format |
+|---|---|---|---|
+| silence_1s.wav | 32044 | 643f8a8dc8bd9c19225afffad2becfec5426180b3749cb208abdf1a6c8354efc | PCM16 mono 16 kHz |
+| short_tone_100ms.wav | 3244 | 027e2fb582dd9fe29201af0fd15e330e489752156bfa40c24acdbd8f1818f4c9 | PCM16 mono 16 kHz |
+| long_tone_3s.wav | 96044 | 2fbf10398caa53690570f970ca5b0f57b644d222260a01601582850939856e2b | PCM16 mono 16 kHz |
+| french_speech.wav | 80044 | 88a74f754a0d177e23a422069063e6cf1a5ed1c7f530b001028ea2c4eaf2dffc | PCM16 mono 16 kHz |
+| music_chords_2s.wav | 64044 | 785dee0cb62dbbb67d52b9896fdc687631999d56c1937448e4a8fad3ad10a1bf | PCM16 mono 16 kHz |
+| rain_noise_2s.wav | 64044 | d5cb6624868f509e7189f19077cd3c03f56eecf0cc4bce610736afd26bfe2afa | PCM16 mono 16 kHz |
+| stereo_44100_tone.wav | 88244 | a0d5164dd2ed714ed70e17060ee7e32b29f796e65d7332ebdad66da1269d1386 | PCM16 stereo 44.1 kHz |
+| tone_24bit_50ms.wav | 2444 | b55d9bc9a28b427bfd0a87ff75c22f056570936509b12fdee3bb6e3d2dcfcb3c | PCM24 mono 16 kHz |
+| tone_8bit_50ms.wav | 844 | 1302fdceec3c90251a324c94fea2990452b69dd1f44bfbd3c114539e9943f665 | PCM8 mono 16 kHz |
+
+### Audio preprocessing goldens
+
+fixtures/media/audio_preprocess_golden.json records the official preprocessing
+output for the six 16 kHz clips. It was generated outside the product with
+Transformers 5.22.2, PyTorch 2.15.0 CPU, and NumPy 2.5.4 in float32, using
+scripts/generate_audio_goldens.py. Each case records the source path, sample
+rate, channels, sample width, sample count, padded sample count, mel-frame
+count, valid-frame count, audio token count, SHA-256 of the FP32 mel features,
+and the first eight feature values.
+
+| File | Size | SHA-256 |
+|---|---|---|
+| audio_preprocess_golden.json | 4180 | 2157a17558d5599c87ba75225a61b4c0c9977f90c7dcef5b7dc3ca24f7be5600 |
+
+The Rust tests compare the padded sample count, frame counts, and first feature
+values with an absolute tolerance of `1e-5`. The full mel fingerprint is
+recorded for manual inspection; it is not asserted bit-exactly because the
+product's radix-2 FFT is not bit-identical to NumPy's pocketfft.
+
+### Regeneration contract
+
+Any replacement audio fixture must record its size, SHA-256, sample rate,
+channels, sample width, duration, and the exact generation procedure here. The
+synthetic clips must remain reproducible with the documented deterministic
+Python procedure. The French speech clip may be regenerated with the documented
+macOS `say` command on a machine with the same voice, but the committed file is
+the reference. The audio preprocessing golden must be regenerated with the
+documented laboratory script and the frozen model cache; the Rust tests compare
+the first values with a tolerance, not exact bytes.

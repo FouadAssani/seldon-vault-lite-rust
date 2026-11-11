@@ -2,9 +2,9 @@
 //!
 //! The crate exposes the CLI, the central error type, binary format readers,
 //! strict JSON, the FP32 tensor core, the frozen model tokenizer, the milestone
-//! M3 persistent store, and the milestone M4 native media decoders. The vision
-//! encoder and HTTP API will be added over milestones M4 to M9; no empty module
-//! is created in advance.
+//! M3 persistent store, and the milestone M4/M5 native media decoders and
+//! multimodal encoders. The HTTP API will be added at milestone M6; no empty
+//! module is created in advance.
 //!
 //! Project contract: no third-party crate, only std and core::arch
 //! intrinsics.

@@ -147,7 +147,8 @@ The official prompt prefixes are exposed by `model::prompt`:
 - The reduced fixture is not a general tokenizer.
 - The full-file parity test requires the development model cache.
 - The BPE loop is the scalar reference and has not been optimized.
-- M2 text embeddings and layer outputs are validated against official
-  golden fixtures; image and audio inference are not implemented.
-- Image, audio, and video tokens are recognized as added tokens but their
-  modalities are not implemented at M2.
+- M2 text embeddings and layer outputs are validated against official golden
+  fixtures; image inference is implemented at M4 and audio inference at M5.
+- Image, audio, and video tokens are recognized as added tokens; image and
+  audio modalities are implemented at M4 and M5, while video remains future
+  work.

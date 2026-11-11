@@ -1,13 +1,13 @@
-# Architecture — milestone M4 state
+# Architecture — milestone M5 state
 
 ## Purpose
 
-This document describes the repository organization at milestone M4 and the
+This document describes the repository organization at milestone M5 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
-ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, ADR 0008, or
-ADR 0009, which are authoritative for foundational, format, model,
-text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE, JPEG, and
-image preprocessing/vision decisions.
+ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, ADR 0008,
+ADR 0009, or ADR 0010, which are authoritative for foundational, format, model,
+text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE, JPEG, image
+preprocessing/vision, and WAV/audio decisions.
 
 ## Current state
 
@@ -37,12 +37,17 @@ The repository contains:
     │   ├── text.rs         # EmbeddingGemma 2 text forward pass
     │   ├── vision.rs       # strict vision configuration, weights, and tower
     │   ├── image.rs        # image prompt, vision-to-text connection
+    │   ├── audio.rs        # strict audio configuration, weights, and tower
+    │   ├── audio_embedder.rs # audio prompt, audio-to-text connection
     │   ├── prompt.rs       # official prompt prefixes
     │   └── tokenizer.rs    # exact BPE tokenizer for the frozen model
     ├── media/
     │   ├── mod.rs
     │   ├── image.rs        # shared validated decoded-image type
     │   ├── preprocess.rs   # official resize, RGB, patches, and positions
+    │   ├── audio.rs        # mono samples, downmix, and windowed-sinc resampling
+    │   ├── audio_preprocess.rs # official log-mel spectrogram and frame mask
+    │   ├── wav.rs          # strict RIFF/WAVE PCM and IEEE-float decoder
     │   ├── deflate.rs      # bounded zlib/DEFLATE decoder
     │   ├── png.rs          # strict PNG parser and scanline reconstruction
     │   └── jpeg.rs         # strict baseline JPEG parser and decoder
@@ -71,6 +76,9 @@ The repository contains:
     ├── media.rs            # public API PNG/JPEG/DEFLATE integration tests
     ├── preprocess.rs       # official image preprocessing parity tests
     ├── image_embeddings.rs # image embedding parity tests
+    ├── audio.rs            # WAV decoding and log-mel preprocessing tests
+    ├── audio_embeddings.rs # audio embedding and text-to-audio ranking tests
+    ├── audio_tiny.rs       # tiny official audio tower and text-connection tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
@@ -83,6 +91,7 @@ The repository contains:
     ├── adr/0007-native-png-and-deflate-decoding.md
     ├── adr/0008-native-jpeg-decoding.md
     ├── adr/0009-image-preprocessing-and-vision.md
+    ├── adr/0010-native-wav-and-audio-embeddings.md
     ├── architecture.md
     ├── formats.md
     ├── storage.md
@@ -96,13 +105,17 @@ The repository contains:
     │   ├── manifest.json    # frozen revision, sizes, SHA-256, prompts
     │   ├── text_golden.json # eight text cases and a layer probe
     │   ├── image_golden.json # image embeddings and vision layer probes
-    │   └── tiny_text/       # complete 3-layer official model and golden outputs
+    │   ├── audio_golden.json # six audio embeddings and 12 layer probes
+    │   ├── tiny_text/       # complete 3-layer official model and golden outputs
+    │   └── tiny_audio/      # 2-layer official audio tower and golden outputs
     ├── tokenizer/
     │   ├── golden.json      # official token ids for the golden corpus
     │   └── mini_tokenizer.json # reduced tokenizer for reproducible tests
     └── media/
-        ├── README.md        # PNG/JPEG/preprocessing provenance and hashes
+        ├── README.md        # PNG/JPEG/audio/preprocessing provenance and hashes
         ├── preprocess_golden.json # official resize/patch/position hashes
+        ├── audio_preprocess_golden.json # official log-mel frame fingerprints
+        ├── audio/           # short WAV excerpts for decoding and parity
         ├── *.png            # PNG decoder inputs
         ├── *.jpg            # JPEG decoder inputs
         └── *_ref.png        # independent reference decodes
@@ -111,17 +124,21 @@ The repository contains:
         └── README.md       # role planned at the packaging milestone
     scripts/
         ├── verify.sh       # full milestone quality gate
-        └── generate_image_goldens.py # laboratory-only image reference generator
+        ├── generate_image_goldens.py # laboratory-only image reference generator
+        ├── generate_audio_goldens.py # laboratory-only audio reference generator
+        └── generate_tiny_audio_fixture.py # laboratory-only tiny audio model generator
 
 No api or jobs module is created empty. They will appear with their first
 testable feature, at the corresponding milestone. The media module contains the
 native zlib/DEFLATE decoder, the PNG decoder, the baseline JPEG decoder, the
-shared decoded-image type, and the official preprocessing pipeline. The model
-module contains the text encoder, the vision tower, and the image embedder that
-connects them. Image embeddings are implemented and validated against the
-official reference; image storage, image indexing, and cross-modal search are
-not yet implemented. Audio inference is not claimed. Snapshots and compaction
-are implemented; see ADR 0006.
+shared decoded-image type, the official image preprocessing pipeline, the WAV
+decoder, mono conversion and resampling, and the official log-mel processor. The
+model module contains the text encoder, the vision tower, the audio tower, and
+the image and audio embedders that connect them to the text space. Text, image,
+and audio embeddings are implemented and validated against the official
+reference; text, image, and audio documents are stored, indexed, and searched
+through the CLI. Snapshots and compaction are implemented; see ADR 0006. The
+HTTP API, jobs, HNSW, and MP3 remain future work.
 
 ## Layers and dependencies
 
@@ -154,9 +171,9 @@ Rules:
 |---|---|---|---|
 | version | prints name, version, target | stdout | 0 |
 | help | prints help, commands, and codes | stdout | 0 |
-| embed | loads the text model and prints one JSON vector | stdout | 0 |
-| index | ingests a strict JSONL document file into the store | stdout | 0 |
-| search | runs hybrid, lexical, or vector search | stdout | 0 |
+| embed | loads the text, image, or audio path and prints one JSON vector | stdout | 0 |
+| index | ingests a strict JSONL text/image/audio document file into the store | stdout | 0 |
+| search | runs hybrid, lexical, or vector search over stored documents | stdout | 0 |
 | verify | validates the snapshot and journal prefix read-only | stdout | 0 |
 | compact | materializes a snapshot and replaces the journal | stdout | 0 |
 | --version, -V | alias of version | stdout | 0 |
@@ -175,30 +192,39 @@ Rules:
 | write failure | execution error | stderr (best-effort) | 1 |
 | closed pipe | normal end | — | 0 |
 
-embed accepts --model-dir, --prompt, --dim, --text, --ids, and positional
-text. With no text or ids, it reads standard input with a 1 MiB cap. Text is
-prefixed with the official prompt before tokenization; --ids bypasses the
-tokenizer and the prefix for diagnostics.
+embed accepts --model-dir, --prompt, --dim, --text, --ids, --image, --audio,
+--vision-tokens, and positional text. With no text, ids, image, or audio, it
+reads standard input with a 1 MiB cap. Text is prefixed with the official prompt
+before tokenization; --ids bypasses the tokenizer and the prefix for
+diagnostics. Image input is decoded with the native PNG/JPEG decoders and
+embedded through the official preprocessing and vision tower. Audio input is
+decoded with the native WAV decoder, converted to 16 kHz mono with native
+resampling, and embedded through the official log-mel processor and audio tower.
+The four input families are mutually exclusive. The 30-second audio cap applies.
 
 index requires --data-dir and one JSONL file or -. Each line is an object with
-id, text, optional title, optional source, and optional metadata. Duplicate
-ids, unknown fields, malformed JSON, oversized lines, and more than 10,000
-documents are rejected before any write. Text embeddings use the Document
-prompt and the frozen tokenizer. Image lines carry an image path instead of
-text, are decoded with the native PNG/JPEG decoders, and are embedded through
-the official preprocessing and vision tower. Their chunk text is empty, so
+id and exactly one of text, image, or audio, plus optional title, optional
+source, and optional metadata. Duplicate ids, unknown fields, malformed JSON,
+oversized lines, and more than 10,000 documents are rejected before any write.
+Text embeddings use the Document prompt and the frozen tokenizer. Image lines
+carry an image path instead of text, are decoded with the native PNG/JPEG
+decoders, and are embedded through the official preprocessing and vision tower.
+Audio lines carry a WAV path, are decoded and preprocessed natively, and are
+embedded through the audio tower. Image and audio chunks have empty text, so
 they participate in vector search and modality filters but not BM25. When
-source is omitted, the image path becomes the source. A diagnostic --ids mode
-accepts an ids array and uses TextModel::embed_ids instead of the tokenizer;
-text is still stored for BM25. embed --image exposes the image path directly,
-and --vision-tokens selects one of the official visual budgets.
+source is omitted, the image or audio path becomes the source. A diagnostic
+--ids mode accepts an ids array and uses TextModel::embed_ids instead of the
+tokenizer; text is still stored for BM25. embed --image exposes the image path
+directly, embed --audio exposes the audio path directly, and --vision-tokens
+selects one of the official visual budgets.
 
 search requires --data-dir and accepts --model-dir, --dim, --mode
-hybrid|lexical|vector, --limit, --offset, repeatable --filter KEY=VALUE, and a
-diagnostic --ids. Lexical mode does not load the model. Vector and hybrid modes
-embed the query with the SearchQuery prompt. The output is a JSON array with
-chunk id, document id, ordinal, score, lexical and vector ranks, title,
-source, modality, text, and metadata.
+hybrid|lexical|vector, --limit, --offset, repeatable --filter KEY=VALUE, --ids,
+--image, and --audio. Lexical mode does not load the model. Vector and hybrid
+modes embed the query with the SearchQuery prompt. Image and audio queries
+require vector mode and cannot be combined with query text or ids. The output
+is a JSON array with chunk id, document id, ordinal, score, lexical and vector
+ranks, title, source, modality, text, and metadata.
 
 verify requires --data-dir and prints records, snapshot_records, documents,
 chunks, and truncated_bytes. It does not acquire the writer lock and does not
@@ -349,6 +375,41 @@ image vector queries. Text-to-image and image-to-image ranking tests pass on a
 two-image reference corpus. Broader ranking quality and vision performance
 remain future work. See ADR 0007, ADR 0008, and ADR 0009.
 
+src/media/wav.rs implements a strict RIFF/WAVE decoder for PCM with 8, 16, 24,
+or 32 bits per sample and IEEE float with 32 or 64 bits per sample, including
+WAVE_FORMAT_EXTENSIBLE when its sub-format is PCM or float. It validates the
+RIFF size, every chunk boundary and padding byte, the format fields, block
+alignment, byte rate, data size, frame count, channel count, and sample rate
+before reading. It rejects compressed codecs, 12-bit PCM, unsupported float
+widths, non-finite samples, truncated chunks, and inconsistent headers. Caps
+are 64 MiB per file, 64 MiB of data, eight channels, 8 kHz to 192 kHz, and
+5,760,000 source frames (30 seconds at 192 kHz). Channels are downmixed by
+averaging and returned as FP32 mono at the source rate.
+
+src/media/audio.rs converts mono audio to the 16 kHz model rate with a
+normalized windowed-sinc kernel (32 taps, Hann window, cutoff
+`min(1, target/source)`). It truncates to 480,000 samples, matching the official
+30-second feature-extractor defaults, and rejects non-finite samples and
+out-of-range rates. The conversion is deterministic and uses only `std`.
+
+src/media/audio_preprocess.rs reproduces the official Gemma 4 audio feature
+extractor: 320-sample frames, 160-sample hop, 512-point FFT, periodic Hann
+window, 160-sample semicausal left padding, 128 HTK mel filters from 0 to
+8000 Hz with floor 0.001, natural logarithm, right-padding to a multiple of 128
+samples, and a frame mask that marks only complete analysis windows. Invalid
+frames are exactly zero. FFT and mel projection use f64 accumulation and round
+to f32 once. The committed audio preprocessing golden compares frame counts,
+mask counts, and first feature values; the path is not claimed bit-exact
+because a different radix-2 FFT can differ in the last f32 bit. The observed
+maximum absolute difference on the short reference clip is 4.77e-7.
+
+Audio embeddings are validated against the official reference on six clips:
+silence, a short tone, a long tone, French speech, a music chord progression,
+and rain-like noise. Audio documents are stored with modality audio, indexed
+from the CLI, and retrieved by text or audio vector queries. Text-to-audio
+ranking tests pass on the six-clip corpus. MP3, streaming audio, and broader
+audio ranking quality remain future work. See ADR 0010.
+
 ## Model boundary
 
 The model is frozen at revision
@@ -383,6 +444,17 @@ projection. Unexpected vision tensors, missing tensors, shape mismatches, and
 non-finite values are rejected. The image embedder reads the Safetensors file
 once and shares the bytes between both loaders.
 
+model::audio::AudioWeights reads the same file and validates the audio
+inventory: two subsampling convolutions and norms, the subsampling projection,
+two feed-forward branches, the chunked attention projections and per-layer
+relative-key projection, per-dimension scales, the causal depthwise light
+convolution, layer norms, the 1024 to 1536 output projection with bias, and the
+1536 to 512 embedding projection. Every clipped linear also carries its scalar
+input/output bounds. Unexpected audio tensors, missing tensors, shape
+mismatches, inverted bounds, and non-finite values are rejected. The audio
+embedder reads the Safetensors file once and shares the bytes between the text
+and audio loaders.
+
 ### Vision inference
 
 model::vision::VisionModel reproduces the frozen gemma4_vision configuration:
@@ -398,8 +470,31 @@ The vision soft tokens replace the placeholder embeddings, PLE is computed
 from the resulting inputs_embeds, and mean pooling, projection, normalization,
 and Matryoshka truncation follow the text path.
 
-The source SHA-256 is retained for manifest comparison. The FP32 weight set is
-capped at 2^30 elements.
+model::audio::AudioModel reproduces the frozen gemma4_audio configuration:
+hidden 1024, 12 layers, eight heads of dimension 128, convolution kernel 5,
+subsampling channels [128, 32], chunk size 12, left context 13, right context 0,
+logit cap 50, RMSNorm epsilon 1e-6, output projection 1536, residual weight 0.5,
+gradient clipping 1e10, SiLU, and clipped linears. It rejects FP16, a non-SiLU
+activation, a non-clipped linear configuration, inconsistent head layouts, and
+missing bounds instead of approximating them. The tower applies two stride-2
+convolution/LayerNorm/ReLU blocks with mask striding, sinusoidal relative
+positions projected per layer, chunked local attention with per-head relative
+bias and soft-capped scores, causal depthwise light convolution, two
+feed-forward branches, and the output projection. Padding queries are skipped;
+the tower is causal along time, so trailing padding cannot influence a valid
+query. Captured layer probes select valid rows only.
+
+model::audio_embedder::AudioEmbedder validates the audio special token ids
+against the tokenizer and runs the audio-only prompt
+<bos><|audio><|audio|>*soft<audio|><eos>. The projected audio soft tokens
+replace the placeholder embeddings, PLE is computed from the resulting
+inputs_embeds, and mean pooling, projection, normalization, and Matryoshka
+truncation follow the text path. The embedder converts the decoded WAV to
+16 kHz mono, computes the official log-mel features, runs the tower, and builds
+the prompt. No transcription or file-name fallback is used.
+
+The source SHA-256 is retained for manifest comparison. The FP32 text, vision,
+and audio weight sets are each capped at 2^30 elements.
 
 ### Tokenizer
 
@@ -512,6 +607,19 @@ seven-case image corpus is an ignored test because one scalar vision pass is
 expensive. The media fixtures and their provenance are recorded in
 fixtures/media/README.md.
 
+M5 adds WAV decoding tests for PCM 8/16/24/32, IEEE float 32, stereo downmix,
+truncated and malformed headers, unsupported codecs, non-finite samples, and
+resampling behavior. The audio preprocessing test compares frame counts, mask
+counts, and first log-mel values against the official feature extractor for six
+clips. The audio embedding test loads the frozen model when the cache is present
+and checks the SSCP output, all 12 encoder layer probes, the projected audio
+features, the final 768-dimensional embedding (cosine and absolute tolerance),
+and Matryoshka truncation. The full six-case audio corpus and the text-to-audio
+ranking test are ignored tests because they load the frozen model and embed
+several clips. The short-tone parity case runs by default. Audio fixtures and
+their provenance are recorded in fixtures/media/README.md and
+fixtures/model/README.md.
+
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0.
 
@@ -526,7 +634,12 @@ a dependency or if minos is not 11.0.
    and validated against the official reference. Rotation and aspect-ratio
    fixtures cover preprocessing and vision parity. Broader ranking quality and
    vision performance remain future work.
-3. **M5**: WAV and compliant audio embeddings.
+3. **M5**: complete on branch feat/m5-audio-embeddings. Native WAV decoding,
+   mono conversion and resampling, official log-mel preprocessing, the audio
+   tower, audio embeddings, audio storage and CLI indexing, and text-to-audio
+   and audio-to-audio vector search are implemented and validated against the
+   official reference. MP3, streaming audio, and broader audio ranking quality
+   remain future work.
 4. **M6**: HTTP API, bounded job queue, and hardening.
 5. **M7**: NEON and macOS packaging.
 6. **M8/M9**: final macOS validation, then Linux port.

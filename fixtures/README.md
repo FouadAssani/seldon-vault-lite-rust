@@ -3,11 +3,11 @@
 This directory contains compact, versioned fixtures used by reproducible
 tests. Model weights and multi-gigabyte files are never committed.
 
-## State at milestone M4 (image path)
+## State at milestone M5 (audio path)
 
-The M1/M2/M3 fixtures remain, and five PNG inputs, five JPEG files, five
-reference PNGs, and two image reference fixtures have been added. They are
-described in media/README.md and model/README.md.
+The M1/M2/M3/M4 fixtures remain, and six WAV excerpts, three conversion WAVs,
+one audio preprocessing golden, and one audio embedding golden have been added.
+They are described in media/README.md and model/README.md.
 
 - `formats/mini.safetensors`: a 281-byte deterministic Safetensors file with
   F32, BF16, and zero-sized tensors. It proves format handling only; it is not
@@ -34,14 +34,30 @@ described in media/README.md and model/README.md.
 - `model/image_golden.json`: patch-embedder and 16 vision layer probes,
   projected vision soft tokens, and the final normalized image embedding for
   seven images, including a rotation and a non-square aspect ratio.
+- `media/audio/`: six 16 kHz mono WAV excerpts (silence, short tone, long
+  tone, French speech, music chords, rain noise) plus stereo 44.1 kHz, PCM24,
+  and PCM8 conversion fixtures.
+- `media/audio_preprocess_golden.json`: official log-mel frame counts, mask
+  counts, padded sample counts, feature fingerprints, and first values for the
+  six 16 kHz clips.
+- `model/audio_golden.json`: audio token layouts, SSCP and all 12 encoder
+  layer probes, projected audio features, and final normalized audio embeddings
+  for the six clips.
+- `model/tiny_audio/`: a complete 2-layer official-code audio tower combined
+  with the tiny text model, its configuration, and a golden for a deterministic
+  12-frame sine input, including SSCP, both layer outputs, projected features,
+  and the final 8-dimensional embedding.
 
 The PNG and JPEG inputs prove decoder behavior. The preprocessing and image
 embedding goldens come from the official reference tensor path and are
 validated by the Rust tests. The JPEG files were generated with macOS sips and
 libjpeg-turbo cjpeg, and the reference PNGs were rendered with sips; these
-tools are laboratory-only and are never run by the product. Audio fixtures do
-not exist yet. Do not fabricate "plausible" fixtures: they must come from a
-documented reference and be verifiable.
+tools are laboratory-only and are never run by the product. The WAV clips were
+generated with deterministic Python code, except the French speech clip, which
+was generated with the macOS `say` voice and converted with `afconvert`; those
+tools are laboratory-only. The audio goldens were generated with Transformers,
+PyTorch, and NumPy outside the product. Do not fabricate "plausible" fixtures:
+they must come from a documented reference and be verifiable.
 
 ## Rules
 
@@ -66,7 +82,12 @@ fixtures/
 │   ├── manifest.json
 │   ├── text_golden.json
 │   ├── image_golden.json
-│   └── tiny_text/
+│   ├── audio_golden.json
+│   ├── tiny_text/
+│   │   ├── config.json
+│   │   ├── golden.json
+│   │   └── model.safetensors
+│   └── tiny_audio/
 │       ├── config.json
 │       ├── golden.json
 │       └── model.safetensors
@@ -77,6 +98,17 @@ fixtures/
 ├── media/
 │   ├── README.md
 │   ├── preprocess_golden.json
+│   ├── audio_preprocess_golden.json
+│   ├── audio/
+│   │   ├── silence_1s.wav
+│   │   ├── short_tone_100ms.wav
+│   │   ├── long_tone_3s.wav
+│   │   ├── french_speech.wav
+│   │   ├── music_chords_2s.wav
+│   │   ├── rain_noise_2s.wav
+│   │   ├── stereo_44100_tone.wav
+│   │   ├── tone_24bit_50ms.wav
+│   │   └── tone_8bit_50ms.wav
 │   ├── rgb_2x2.png
 │   ├── rgba_2x2.png
 │   ├── gray_2x2.png
@@ -96,7 +128,6 @@ fixtures/
 │   ├── gradient_16x16_ref.png
 │   ├── quadrants_16x16_ref.png
 │   └── quadrants_16x16_444_ref.png
-└── audio/                 # short WAV excerpts (M5, pending)
 ```
 
 ## Fingerprints
@@ -131,6 +162,20 @@ fixtures/
 | `media/gradient_16x16_ref.png` | `ef42a5c090545b940480d5ec4e5738466a6ee0f390047008953100e793a4ba7a` |
 | `media/quadrants_16x16_ref.png` | `034f884b1cc8d40ee7985b41ba010eda08d529ccefd1fd54652d3445c8dea2a8` |
 | `media/quadrants_16x16_444_ref.png` | `108d2c8a4d2be8f302ef0733f01184cb7ab75a397da7f0ba9945b0ce0f83d7fc` |
+| `media/audio_preprocess_golden.json` | `2157a17558d5599c87ba75225a61b4c0c9977f90c7dcef5b7dc3ca24f7be5600` |
+| `media/audio/silence_1s.wav` | `643f8a8dc8bd9c19225afffad2becfec5426180b3749cb208abdf1a6c8354efc` |
+| `media/audio/short_tone_100ms.wav` | `027e2fb582dd9fe29201af0fd15e330e489752156bfa40c24acdbd8f1818f4c9` |
+| `media/audio/long_tone_3s.wav` | `2fbf10398caa53690570f970ca5b0f57b644d222260a01601582850939856e2b` |
+| `media/audio/french_speech.wav` | `88a74f754a0d177e23a422069063e6cf1a5ed1c7f530b001028ea2c4eaf2dffc` |
+| `media/audio/music_chords_2s.wav` | `785dee0cb62dbbb67d52b9896fdc687631999d56c1937448e4a8fad3ad10a1bf` |
+| `media/audio/rain_noise_2s.wav` | `d5cb6624868f509e7189f19077cd3c03f56eecf0cc4bce610736afd26bfe2afa` |
+| `media/audio/stereo_44100_tone.wav` | `a0d5164dd2ed714ed70e17060ee7e32b29f796e65d7332ebdad66da1269d1386` |
+| `media/audio/tone_24bit_50ms.wav` | `b55d9bc9a28b427bfd0a87ff75c22f056570936509b12fdee3bb6e3d2dcfcb3c` |
+| `media/audio/tone_8bit_50ms.wav` | `1302fdceec3c90251a324c94fea2990452b69dd1f44bfbd3c114539e9943f665` |
+| `model/audio_golden.json` | `5b97b0eeb9e827a931002c26bcb7edff6040d5961bee412efa64d68d2b22818c` |
+| `model/tiny_audio/config.json` | `bd57288ab4960a85b68504653d2436f9b58ce927c4475dab1d312bc981f65f2f` |
+| `model/tiny_audio/model.safetensors` | `aef254d868be3fac0f01f262a9ea257c83434c441af238700cbde9750f95b912` |
+| `model/tiny_audio/golden.json` | `7ab801b1fcbf29359fbade35a32426bd26e4550e32b4885c3f400627529b58c0` |
 | `model/manifest.json` | self-describing; fixture hashes are inside |
 
 ## Model manifest

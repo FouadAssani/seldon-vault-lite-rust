@@ -16,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::storage::journal::{self, JOURNAL_FILE_NAME, Journal};
 use crate::storage::model::{
     Chunk, ChunkId, ChunkInput, Document, DocumentId, MAX_CHUNKS_PER_DOCUMENT,
-    MAX_EMBEDDING_DIMENSION, Modality, Operation, Transaction,
+    MAX_EMBEDDING_DIMENSION, Operation, Transaction,
 };
 use crate::storage::snapshot::{self, SNAPSHOT_FILE_NAME, SnapshotHeader};
 
@@ -531,14 +531,6 @@ impl Store {
                 "store is poisoned after a failed post-commit apply; reopen it",
             ));
         }
-        match document.modality() {
-            Modality::Text | Modality::Image => {}
-            Modality::Audio => {
-                return Err(Error::unsupported(
-                    "audio documents are not implemented before milestone M5",
-                ));
-            }
-        }
         if chunks.is_empty() {
             return Err(Error::usage(format!(
                 "document {} has no chunks",
@@ -798,14 +790,6 @@ impl StoreState {
         for operation in transaction.operations() {
             match operation {
                 Operation::PutDocument(document) => {
-                    match document.modality() {
-                        Modality::Text | Modality::Image => {}
-                        Modality::Audio => {
-                            return Err(Error::unsupported(
-                                "audio documents are not implemented before milestone M5",
-                            ));
-                        }
-                    }
                     if self.documents.contains_key(document.id()) {
                         return Err(inconsistency(
                             mode,
@@ -960,7 +944,7 @@ fn sync_directory(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use crate::storage::journal::{self, FOOTER_LEN, HEADER_LEN, Journal};
-    use crate::storage::model::{MAX_TRANSACTION_BYTES, Metadata};
+    use crate::storage::model::{MAX_TRANSACTION_BYTES, Metadata, Modality};
     use crate::storage::snapshot::{SNAPSHOT_FILE_NAME, SNAPSHOT_TMP_FILE_NAME};
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1114,21 +1098,22 @@ mod tests {
     }
 
     #[test]
-    fn audio_modalities_and_empty_chunk_lists_are_rejected() {
-        let dir = temp_dir("rejected");
+    fn audio_documents_persist_and_empty_chunk_lists_are_rejected() {
+        let dir = temp_dir("audio");
         let mut store = Store::open(&dir).expect("open store");
         let audio = Document::new(DocumentId::new("audio").expect("id"), Modality::Audio);
-        let error = store
+        let chunk_ids = store
             .put_document(audio, vec![chunk("ignored", vec![1.0, 0.0])])
-            .expect_err("audio is not implemented");
-        assert!(matches!(error, Error::Unsupported(_)), "{error}");
+            .expect("audio document");
+        assert_eq!(chunk_ids.len(), 1);
+        assert_eq!(store.document_count(), 1);
 
         let error = store
             .put_document(document("empty"), Vec::new())
             .expect_err("empty document");
         assert!(matches!(error, Error::Usage(_)), "{error}");
-        assert_eq!(store.document_count(), 0);
-        assert_eq!(store.journal_offset(), 0);
+        assert_eq!(store.document_count(), 1);
+        assert!(store.journal_offset() > 0);
         let _ = fs::remove_dir_all(&dir);
     }
 
