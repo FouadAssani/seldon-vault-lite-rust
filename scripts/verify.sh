@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Full verification for milestone M8 (macOS 1.0 release validation).
+# Full verification for milestone M8 (macOS local-use release validation).
 # Target: macOS Apple Silicon (aarch64-apple-darwin) only.
 #
-# The physical clean-Mac gate is separate; scripts/release_e2e.sh automates the
-# clean-environment lifecycle. Set SELDON_RELEASE_E2E=1 to run it here when the
-# embedded release binary is present.
+# The release validation runs on the development Apple Silicon machine; no
+# separate clean-machine gate is required. Set SELDON_RELEASE_E2E=1 to run
+# scripts/release_e2e.sh when the embedded release binary is present.
 set -euo pipefail
 
 cargo fmt --check
@@ -76,13 +76,13 @@ codesign --verify --strict target/aarch64-apple-darwin/release/seldon-vault-lite
 
 echo "--- Gatekeeper assessment (recorded, not a local-use failure) ---"
 if spctl --assess --type execute -vv target/aarch64-apple-darwin/release/seldon-vault-lite; then
-    echo "Gatekeeper accepts the binary (notarized distribution build)."
+    echo "Gatekeeper accepts the binary; assessment recorded."
 else
     echo "Gatekeeper rejects the ad-hoc build; this is expected for local use."
-    echo "Distribution requires Developer ID signing and notarization (ADR 0013)."
+    echo "No Developer ID signing or notarization is planned; distribution to other Macs is out of scope (ADR 0013)."
 fi
 
-echo "--- clean-environment release lifecycle (optional) ---"
+echo "--- sanitized release lifecycle (optional) ---"
 if [ "${SELDON_RELEASE_E2E:-0}" = "1" ]; then
     embedded="target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite"
     if [ -x "$embedded" ]; then

@@ -90,7 +90,7 @@ The repository contains:
     ├── audio_tiny.rs       # tiny official audio tower and text-connection tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     ├── http_api.rs         # real-server HTTP/1.1 integration tests
-    ├── release_e2e.rs      # clean-environment release lifecycle test
+    ├── release_e2e.rs      # sanitized release lifecycle test
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
     ├── adr/0001-foundations.md
@@ -109,7 +109,7 @@ The repository contains:
     ├── api.md
     ├── architecture.md
     ├── formats.md
-    ├── release.md         # macOS 1.0 release and operations guide
+    ├── release.md         # macOS local-use release and operations guide
     ├── storage.md
     ├── model-parity.md
     └── tokenizer.md
@@ -140,7 +140,7 @@ The repository contains:
         └── README.md       # Rust std model bundle packer and verifier
     scripts/
         ├── verify.sh       # full milestone quality gate
-        ├── release_e2e.sh  # clean-environment release lifecycle harness
+        ├── release_e2e.sh  # sanitized release lifecycle harness
         ├── generate_image_goldens.py # laboratory-only image reference generator
         ├── generate_audio_goldens.py # laboratory-only audio reference generator
         └── generate_tiny_audio_fixture.py # laboratory-only tiny audio model generator
@@ -158,11 +158,13 @@ embedders that connect them to the text space. Text, image, and audio embeddings
 are implemented and validated against the official reference; text, image, and
 audio documents are stored, indexed, and searched through the CLI and the HTTP
 API. Snapshots and compaction are implemented; see ADR 0006. The HTTP API and
-jobs are implemented; see ADR 0011. The M8 release gate is documented in
-docs/release.md and ADR 0013: scripts/release_e2e.sh stages the embedded binary
-and fixtures in a sanitized environment and exercises the full CLI and loopback
-HTTP lifecycle, while the physical clean Apple Silicon Mac run and the
-notarization decision remain open. HNSW and MP3 remain future work.
+jobs are implemented; see ADR 0011. The M8 local-use release validation is
+documented in docs/release.md and ADR 0013: scripts/release_e2e.sh stages the
+embedded binary and fixtures in a sanitized environment and exercises the full
+CLI and loopback HTTP lifecycle on the development Apple Silicon machine. No
+separate clean-machine gate and no Developer ID signing or notarization are
+planned; the artifact is ad-hoc signed and distribution to other Macs is out of
+scope. HNSW and MP3 remain future work.
 
 ## Layers and dependencies
 
@@ -733,12 +735,13 @@ without the development model cache. The shell harness scripts/release_e2e.sh
 covers the embedded frozen model, text/image/audio embeddings, ingestion,
 lexical/vector/hybrid search, verify/compact/restart, the loopback HTTP
 lifecycle, artifact linkage, deployment target, signature, Gatekeeper
-assessment, and the zero-crate graph. A physical clean-Mac run remains a
-separate gate; the harness report records the network-isolation mode.
+assessment, and the zero-crate graph. The harness runs on the development
+Apple Silicon machine; no separate clean-machine gate is required. The report
+records the network-isolation mode.
 
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
 a dependency or if minos is not 11.0. It records the local ad-hoc signature and
-Gatekeeper assessment; set SELDON_RELEASE_E2E=1 to run the clean-environment
+Gatekeeper assessment; set SELDON_RELEASE_E2E=1 to run the sanitized release
 harness when the embedded release binary is present.
 
 ## Next steps
@@ -775,13 +778,15 @@ harness when the embedded release binary is present.
    build is verified: a 1.4 GiB Mach-O linking only libSystem, `minos 11.0`,
    byte-identical text/image/audio vectors, 18.68 s cold and 6.75 s warm
    startup, and about 2.44 GiB maximum RSS. The binary is ad-hoc linker-signed;
-   local execution works, while notarized distribution remains an M8 concern.
-6. **M8**: in progress on branch feat/m8-release-validation. ADR 0013 and
-   docs/release.md define the clean-machine gate, signing modes, and operator
-   contract. scripts/release_e2e.sh automates the clean-environment lifecycle,
-   and tests/release_e2e.rs keeps a fast release lifecycle test in the default
-   suite. The physical clean Apple Silicon Mac run and the notarization decision
-   remain open; the version stays 0.1.0 until both pass.
+   local execution works, while notarized distribution is out of scope for the
+   local-use release.
+6. **M8**: implemented on branch feat/m8-release-validation. ADR 0013 and
+   docs/release.md define the local-use release validation and operator
+   contract. scripts/release_e2e.sh automates the sanitized lifecycle, and
+   tests/release_e2e.rs keeps a fast release lifecycle test in the default
+   suite. No clean-machine gate and no Developer ID signing or notarization are
+   planned; the artifact is ad-hoc signed, distribution to other Macs is out of
+   scope, and the version remains 0.1.0.
 7. **M9**: Linux x86-64 and ARM64 MUSL port, tests, and documentation.
 
 None of these steps may be declared complete without reproducible tests and

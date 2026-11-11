@@ -28,8 +28,8 @@ At milestone M7, runtime-selected NEON kernels were added for the shared
 kernels, with differential scalar-vs-NEON tests and a replay of the frozen text,
 image, and audio parity suites. No tolerance was relaxed.
 
-At milestone M8, the numerical paths are unchanged. The release gate replays
-the frozen parity suites and runs the clean-environment lifecycle harness; it
+At milestone M8, the numerical paths are unchanged. The release validation
+replays the frozen parity suites and runs the sanitized lifecycle harness; it
 does not introduce a new numerical claim. The release documentation records the
 same tolerances and the same frozen model revision.
 

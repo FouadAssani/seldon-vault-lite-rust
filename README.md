@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M8 in progress on branch feat/m8-release-validation — a clean-environment end-to-end release harness, an automated release lifecycle test, ADR 0013, and the macOS 1.0 operations guide are added. The crate remains at 0.1.0 until the physical clean-Mac gate and the signing decision pass; the M7 artifact is ad-hoc signed and not notarized.**
+**Status: milestone M8 implemented on branch feat/m8-release-validation — a local-use end-to-end release harness, an automated release lifecycle test, ADR 0013, and the macOS local-use operations guide are added. The artifact is ad-hoc signed and not notarized; no separate clean-machine gate and no Developer ID signing or notarization are planned. The crate remains at 0.1.0 and no 1.0.0 distribution is claimed; distribution to other Macs is out of scope.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -48,15 +48,16 @@ a compile-time `embedded-model` feature embeds the bundle and ignores the
 model path. The full 1.5 GB embedded build is verified: a 1.4 GiB Mach-O linking
 only libSystem, `minos 11.0`, byte-identical text/image/audio vectors, 18.68 s
 cold / 6.75 s warm startup, and about 2.44 GiB maximum RSS. The binary is
-ad-hoc signed; local use works, while notarized distribution remains an M8
-concern. M8 adds the release gate: ADR 0013, docs/release.md,
+ad-hoc signed; local use works, while notarized distribution is out of scope.
+M8 adds the local-use release validation: ADR 0013, docs/release.md,
 scripts/release_e2e.sh, and tests/release_e2e.rs. The harness stages the
 embedded binary and fixtures in a sanitized environment, verifies text, image,
 and audio embeddings, ingestion, lexical/vector/hybrid search, verify, compact,
 restart persistence, and the loopback HTTP lifecycle, and records the artifact
 linkage, deployment target, signature, Gatekeeper assessment, and zero-crate
-graph. The physical clean Apple Silicon Mac run and the notarization decision
-remain open; the version stays 0.1.0 until both gates pass.
+graph. No separate clean-machine gate and no Developer ID signing or
+notarization are planned; the version remains 0.1.0 and no 1.0.0 distribution is
+claimed.
 
 ## Requirements
 
@@ -75,7 +76,7 @@ The x86_64-apple-darwin target (Intel Mac) is explicitly excluded.
     cargo run -- --help
     cargo test
 
-The clean-environment release harness is documented in
+The sanitized release harness is documented in
 [docs/release.md](docs/release.md):
 
     scripts/release_e2e.sh --binary target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite
@@ -231,10 +232,10 @@ tests are ignored because they load the frozen model and embed several clips:
 | Bundle-backed loading from a model directory or .svlm file | implemented (M7) |
 | Compile-time embedded model bundle (embedded-model feature) | implemented (M7) |
 | Full 1.5 GB embedded Mach-O size/startup verification | implemented (M7) |
-| Clean-environment release lifecycle harness | implemented (M8) |
+| Sanitized release lifecycle harness | implemented (M8) |
 | Automated release lifecycle integration test | implemented (M8) |
-| macOS 1.0 release and operations guide | implemented (M8) |
-| Physical clean-Mac gate and notarization decision | open (M8) |
+| macOS local-use release and operations guide | implemented (M8) |
+| Local-use release validation (no clean-machine or signing gate) | implemented (M8) |
 | TLS, keep-alive, and HTTP/2 | future work |
 
 ## Documentation
@@ -253,8 +254,8 @@ tests are ignored because they load the frozen model and embed several clips:
 - [ADR 0010 — Native WAV and audio embeddings](docs/adr/0010-native-wav-and-audio-embeddings.md)
 - [ADR 0011 — Native HTTP API, jobs, and hardening](docs/adr/0011-http-api-and-jobs.md)
 - [ADR 0012 — NEON kernels and macOS ARM64 packaging](docs/adr/0012-neon-simd-and-packaging.md)
-- [ADR 0013 — macOS 1.0 release validation and distribution](docs/adr/0013-macos-release-validation.md)
-- [macOS 1.0 release and operations guide](docs/release.md)
+- [ADR 0013 — macOS local-use release validation](docs/adr/0013-macos-release-validation.md)
+- [macOS local-use release and operations guide](docs/release.md)
 - [HTTP API contract](docs/api.md)
 - [Architecture (M8 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)

@@ -1,7 +1,9 @@
-# ADR 0013 — macOS 1.0 release validation and distribution
+# ADR 0013 — macOS local-use release validation
 
 - **Status:** accepted
 - **Date:** 2026-11-11
+- **Amended:** 2026-11-11 — local-use only; clean-machine and signing gates
+  removed by project owner decision.
 - **Milestone:** M8
 - **Supersedes:** none
 
@@ -9,36 +11,29 @@
 
 M0–M7 produced a tested engine, a persistent hybrid store, native text, image,
 and audio embeddings, a local HTTP API, runtime-selected NEON kernels, and a
-verified single-file embedded model bundle. The remaining macOS release gap is
-not another numerical feature: it is the evidence that the artifact works on a
-clean Apple Silicon Mac, without the development tree, model cache, Homebrew,
-Python, or an installed inference tool, and that the final documentation tells
-an operator exactly what is supported and what is not.
+verified single-file embedded model bundle. The remaining macOS release work is
+not another numerical feature: it is the evidence that the artifact runs the
+full text/image/audio and storage/HTTP lifecycle from the embedded bundle, and
+that the final documentation tells an operator exactly what is supported and
+what is not.
 
-The M7 artifact is ad-hoc linker-signed. Local execution works, but Gatekeeper
-rejects the binary when it is copied to another Mac. Distribution therefore
-requires a Developer ID Application signature and notarization, which require a
-developer account. That account must not become a runtime dependency of the
-product or a prerequisite for local use.
+The project owner has decided that this release is a **local-use build**:
 
-A successful compilation and a passing test suite on the development machine
-are necessary, but they are not proof that the release is clean-machine ready.
-The release gate must be an explicit protocol with recorded evidence.
+- no separate clean Apple Silicon Mac is required;
+- no Developer ID signing or notarization is planned;
+- distribution to other Macs is out of scope.
+
+The M7 artifact is ad-hoc linker-signed. Local execution works. Gatekeeper may
+reject the binary when it is copied to another Mac, which is expected for an
+ad-hoc build and is recorded rather than treated as a release failure.
 
 ## Decision
 
-### 1. The release gate is a clean-machine protocol
+### 1. Release validation runs on the development Apple Silicon machine
 
-A macOS 1.0 release candidate is accepted only after the end-to-end lifecycle
-has been executed on a clean Apple Silicon Mac that has never built the project.
-The machine must have:
-
-- macOS 11 or later on Apple Silicon (aarch64);
-- no Homebrew, Python, Cargo, or inference engine used by the validation;
-- no network connection for the CLI validation;
-- no model directory and no `.model-cache`;
-- only the release binary, the committed media fixtures, and the validation
-  harness.
+A macOS release candidate is accepted after the end-to-end lifecycle has been
+executed on the development Apple Silicon machine with the embedded release
+artifact. No separate clean-machine gate is required.
 
 The automated harness is `scripts/release_e2e.sh`. It stages the binary and
 fixtures in a temporary install root, runs the binary with `env -i` and a
@@ -52,13 +47,9 @@ deployment target, code signature, Gatekeeper assessment, and the zero-crate
 Cargo graph when Cargo is available.
 
 When `sandbox-exec` is usable, the CLI path runs with network access denied.
-The HTTP path uses loopback only. The harness records the network-isolation
-mode in its JSON report; a clean-machine run must not claim offline validation
-when isolation was unavailable.
-
-The harness is necessary but not sufficient. The physical clean-Mac run is a
-separate gate because the development machine has the source tree, the model
-cache, and developer tooling that can hide missing-file assumptions.
+The HTTP path uses loopback only. The harness records the network-isolation mode
+in its JSON report. When isolation is unavailable, the report says so; the
+release notes must not claim an isolated offline run that was not performed.
 
 ### 2. Release artifact
 
@@ -72,30 +63,26 @@ checked with `vtool`. The binary must link only `/usr/lib/libSystem.B.dylib`;
 no third-party dynamic application library, no FFI, and no Cargo dependency are
 allowed. The binary is not built for `x86_64-apple-darwin`.
 
-### 3. Signing and distribution
+### 3. Local-use signing only
 
-Two signing modes are distinguished:
+The release artifact is ad-hoc linker-signed:
 
-- **Local-use build:** ad-hoc linker signature. It works on the machine that
-  built it. Gatekeeper may reject it when it is copied to another Mac. It must
-  be labeled local-use only and must not be presented as a general macOS 1.0
-  distribution.
-- **Distributed build:** Developer ID Application signature with the hardened
-  runtime, a secure timestamp, notarization through `notarytool`, and a stapled
-  ticket. `codesign --verify --strict` and `spctl --assess --type execute`
-  must both pass on a clean Mac before distribution.
+- `codesign --verify --strict` passes on the artifact;
+- `spctl --assess --type execute` rejects it because it is not notarized;
+- this rejection is expected and is recorded in the harness report.
 
-No developer account is required for local use. A release candidate that is not
-notarized is not a general distribution; the release notes and the README must
-say so. Bypassing Gatekeeper by removing quarantine attributes is not a
-supported distribution procedure.
+No Developer ID Application signature, hardened-runtime distribution, secure
+timestamp, notarization, or stapled ticket is planned. The artifact is a
+**local-use build** and must not be presented as a general macOS distribution.
+Distribution to other Macs is out of scope. Bypassing Gatekeeper by removing
+quarantine attributes is not a supported procedure.
 
 ### 4. Version and claim discipline
 
-The crate remains at `0.1.0` while the clean-machine gate and the signing
-decision are open. The release commit that passes both gates will bump the
-version to `1.0.0` and tag `v1.0.0`. A successful development-machine run does
-not justify a 1.0 claim by itself.
+The crate remains at `0.1.0`. This release validation is complete for the
+local-use artifact, but no `1.0.0` distribution is claimed. A version bump and
+tag would require a separate distribution decision; they are not part of this
+milestone.
 
 No modality is declared supported because a vector was produced from a file
 name or a textual marker. The text, image, and audio paths in this release are
@@ -105,13 +92,14 @@ output remain unsupported.
 
 ### 5. Final documentation
 
-`docs/release.md` is the operator-facing macOS 1.0 guide: supported platform,
-install, offline behavior, data lifecycle, backup and recovery, local API
-security, signing and Gatekeeper, performance expectations, known limitations,
-and the release checklist. The README, AGENTS.md, architecture, parity,
-benchmarks, and API documents are updated to the same state. The release notes
-must state the exact artifact, model revision, macOS version, hardware, and
-measured results. No result is fabricated or inferred from an unrelated run.
+`docs/release.md` is the operator-facing guide for the local-use macOS build:
+supported platform, install, offline behavior, data lifecycle, backup and
+recovery, local API security, Gatekeeper behavior, performance expectations,
+known limitations, release validation, and the release checklist. The README,
+AGENTS.md, architecture, parity, benchmarks, and API documents are updated to
+the same state. The release notes must state the exact artifact, model revision,
+macOS version, hardware, and measured results. No result is fabricated or
+inferred from an unrelated run.
 
 ### 6. Data safety and compatibility
 
@@ -125,30 +113,29 @@ requires a documented migration, not silent in-place reinterpretation.
 
 ## Alternatives considered
 
-- **Declare 1.0 after the development test suite:** rejected. It does not prove
-  that the binary runs without the source tree, the model cache, or developer
-  tooling.
+- **Require a separate clean Apple Silicon Mac:** rejected by the project owner.
+  The sanitized harness on the development machine is the release validation.
+- **Require Developer ID signing and notarization:** rejected by the project
+  owner. The artifact is local-use only and distribution to other Macs is out of
+  scope.
+- **Claim a 1.0 distribution without notarization:** rejected. The version stays
+  at 0.1.0 and no general distribution is claimed.
 - **Require Homebrew, Python, or an inference server on the target Mac:**
   rejected. It violates the zero-dependency and zero-external-engine contract.
 - **Ship the model as an external directory:** rejected for the release
   artifact. It breaks the single-file goal; directory loading remains a
   development path.
-- **Treat ad-hoc signing as sufficient for distribution:** rejected. Gatekeeper
-  rejects it on other Macs, and bypassing quarantine is not supported.
-- **Notarize with an ad-hoc signature:** impossible. Notarization requires a
-  Developer ID identity.
-- **Run the harness only on the development machine and call it clean:** rejected.
-  The harness reduces manual error, but the physical clean-Mac gate remains.
+- **Run the harness only on the development machine and call it a distribution:**
+  rejected. It is a local-use validation, not a notarized distribution.
 
 ## Consequences
 
-- M8 has a repeatable automated harness and a documented manual gate. The
-  harness can be run on the development machine for early feedback, but its
-  result is not a substitute for the clean-Mac run.
-- The local binary remains usable offline without an account. Distribution to
-  other Macs requires credentials and notarization.
-- The version stays at 0.1.0 until both gates pass. The 1.0.0 claim is tied to a
-  specific artifact and recorded evidence.
+- M8 has a repeatable automated harness and final documentation for the
+  local-use artifact. No clean-machine gate and no signing/notarization step are
+  tracked.
+- The local binary remains usable offline without an account. Gatekeeper may
+  reject it on another Mac; distribution to other Macs is out of scope.
+- The version stays at 0.1.0. No `1.0.0` tag or distribution claim is made.
 - The release documentation must be updated whenever the artifact, model
   revision, signing mode, or supported platform changes.
 - No runtime behavior, numerical tolerance, or third-party dependency is
@@ -169,14 +156,14 @@ requires a documented migration, not silent in-place reinterpretation.
 - `otool -L` shows only `/usr/lib/libSystem.B.dylib`.
 - `vtool -show-build` reports `minos 11.0`.
 - `codesign --verify --strict` passes; `spctl --assess --type execute` is
-  recorded (rejected for ad-hoc, accepted for a notarized Developer ID build).
-- The physical clean-Mac run records the macOS version, hardware, date,
-  artifact SHA-256, harness output, and network-isolation mode.
+  recorded as rejected for the ad-hoc local-use build.
+- The harness report records the macOS version, hardware, date, artifact
+  SHA-256, network-isolation mode, and lifecycle results.
 
 ## References
 
-- `scripts/release_e2e.sh` — automated clean-environment lifecycle harness.
-- `docs/release.md` — operator-facing macOS 1.0 release guide.
+- `scripts/release_e2e.sh` — local-use release lifecycle harness.
+- `docs/release.md` — operator-facing local-use macOS release guide.
 - `docs/adr/0012-neon-simd-and-packaging.md` — bundle format and embedded build.
 - `docs/benchmarks.md` — measured startup, memory, and embedding performance.
 - `seldon-vault-lite-plan.md` sections 12 and 13 — packaging and release tests.

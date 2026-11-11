@@ -1,10 +1,10 @@
-# macOS 1.0 release and operations guide
+# macOS local-use release and operations guide
 
-**Status:** milestone M8 is in progress on branch `feat/m8-release-validation`.
-This guide is the operator-facing contract for the macOS Apple Silicon release.
-The crate version remains `0.1.0` until the clean-machine gate and the signing
-decision described below are complete; only then is the release version bumped
-to `1.0.0` and tagged `v1.0.0`.
+**Status:** milestone M8 is implemented on branch `feat/m8-release-validation`
+for the local-use macOS Apple Silicon artifact. No separate clean-machine gate
+and no Developer ID signing or notarization are required or planned; the binary
+is ad-hoc signed and Gatekeeper rejection on another Mac is expected. The crate
+version remains `0.1.0`; no `1.0.0` distribution claim is made.
 
 ## Supported platform
 
@@ -15,6 +15,8 @@ to `1.0.0` and tagged `v1.0.0`.
 - **Runtime:** no third-party crate, no FFI, no external inference engine, no
   external database, no network download, and no developer account for local
   use.
+- **Distribution:** local-use only. Distribution to other Macs is out of scope;
+  no Developer ID signing or notarization is planned.
 - **Build:** Rust stable, minimum 1.89. The delivered artifact is built for
   `aarch64-apple-darwin` with the `embedded-model` feature.
 
@@ -66,8 +68,8 @@ The version line is:
 
     seldon-vault-lite 0.1.0 (aarch64-apple-darwin)
 
-The release version becomes `1.0.0` only after the gates in this document
-pass.
+The artifact remains version `0.1.0`. This is a local-use build; no `1.0.0`
+distribution is claimed.
 
 ### Quick checks
 
@@ -96,9 +98,9 @@ The product requires no network at runtime:
 - the HTTP API binds to loopback by default.
 
 The automated harness runs the CLI path under `sandbox-exec` with network
-denied when that tool is usable. The HTTP path is loopback-only by design. A
-clean-machine run must record the network-isolation mode; do not claim offline
-validation when isolation was unavailable.
+denied when that tool is usable. The HTTP path is loopback-only by design. The
+harness report records the network-isolation mode; do not claim an isolated
+offline run when isolation was unavailable.
 
 To validate offline manually, disconnect the Mac from all networks and run the
 text, image, and audio commands above. They must not fail, hang on a download,
@@ -188,41 +190,24 @@ Security rules:
 
 The HTTP API and job lifecycle are documented in `docs/api.md` and ADR 0011.
 
-## Signing, Gatekeeper, and distribution
-
-### Local-use build
+## Local-use build and Gatekeeper
 
 The embedded release is ad-hoc linker-signed:
 
     codesign -dv --verbose=4 seldon-vault-lite
     # Signature=adhoc
+    codesign --verify --strict seldon-vault-lite
+    # valid on disk
 
-Local execution works without a developer account. If the binary is copied to
-another Mac, Gatekeeper may reject it. An ad-hoc build is a **local-use build**,
-not a general macOS 1.0 distribution. Do not instruct users to strip quarantine
-attributes as a substitute for signing.
+Local execution works without a developer account. `spctl --assess --type
+execute` rejects the artifact because it is not notarized. This rejection is
+expected and is recorded in the release harness report.
 
-### Distributed build
-
-A distributed macOS 1.0 build must be signed with a Developer ID Application
-identity, use the hardened runtime, and be notarized and stapled:
-
-    codesign --force --options runtime --timestamp \
-      --sign "Developer ID Application: <Team Name> (<TEAMID>)" \
-      seldon-vault-lite
-    ditto -c -k --keepParent seldon-vault-lite seldon-vault-lite.zip
-    xcrun notarytool submit seldon-vault-lite.zip \
-      --keychain-profile "<profile>" --wait
-    xcrun stapler staple seldon-vault-lite
-    codesign --verify --strict --verbose=2 seldon-vault-lite
-    spctl --assess --type execute --verbose=4 seldon-vault-lite
-
-The last two commands must pass on a clean Mac before distribution. The exact
-team identity and notarytool profile are release-environment inputs; they are
-never committed and never required by the product at runtime.
-
-If notarization is not available, publish the artifact explicitly as a
-local-use build and do not claim general distribution.
+No Developer ID Application signature, hardened-runtime distribution, secure
+timestamp, notarization, or stapled ticket is planned. The artifact is a
+**local-use build**, not a general macOS distribution. Distribution to other
+Macs is out of scope. Do not instruct users to strip quarantine attributes as a
+substitute for signing.
 
 ## Performance and resources
 
@@ -257,30 +242,30 @@ model revision, and parameters with any new measurement.
 - Broader ranking quality is not claimed; only the validated reference cases
   and the two- and six-item ranking smoke tests are covered.
 - The scalar vision and audio towers are slow compared with the NEON text path.
-- An ad-hoc build is local-use only; general distribution requires Developer ID
-  signing and notarization.
+- The artifact is a local-use build: ad-hoc signed, not notarized, and not
+  intended for distribution to other Macs. Gatekeeper rejection on another Mac
+  is expected.
 - The storage format is versioned; a future schema change requires a documented
   migration.
 
-## Clean-machine validation protocol
+## Release validation protocol
 
-This is the release gate. Run it on a clean Apple Silicon Mac that has never
-built the project. The machine must not use Homebrew, Python, Cargo, or an
-inference engine for the validation.
+Run the validation on the development Apple Silicon machine with the embedded
+artifact. No separate clean Mac is required, and no clean-machine gate is
+tracked. The harness still uses a sanitized temporary environment so the run
+does not depend on the source tree or the development model cache.
 
 ### Prepare
 
-1. Build the embedded release artifact on a development machine:
+1. Build the embedded release artifact:
 
        SELDON_MODEL_BUNDLE="$PWD/.model-cache/f9972ac22e696a105c482202646979e33e4b5a1e/model.svlm" \
          CARGO_TARGET_DIR=target/embedded-full \
          cargo build --release --features embedded-model --target aarch64-apple-darwin
 
 2. Record the artifact SHA-256 and size.
-3. Copy the binary, `scripts/release_e2e.sh`, and `fixtures/media/` to the
-   clean Mac over offline media.
-4. Verify the SHA-256 on the clean Mac.
-5. Disconnect the clean Mac from all networks.
+3. Keep the model cache outside the validation run. The harness stages only the
+   binary and `fixtures/media/` in a temporary install root.
 
 ### Run the automated harness
 
@@ -341,8 +326,8 @@ each item.
 | 23 | `otool -L` | only libSystem |
 | 24 | `vtool -show-build` | `minos 11.0` |
 | 25 | `codesign --verify --strict` | passes |
-| 26 | `spctl --assess` | recorded; accepted only for notarized distribution |
-| 27 | Offline CLI | passes with network disabled |
+| 26 | `spctl --assess` | rejected; expected for the local-use ad-hoc build |
+| 27 | Offline CLI | optional; the harness records whether network isolation was available |
 | 28 | No model cache | no `.model-cache` created |
 
 ### Record
@@ -358,8 +343,8 @@ Archive the following with the release candidate:
 - signing mode and Gatekeeper assessment;
 - any deviation, with a written justification.
 
-A development-machine run is useful early feedback but does not satisfy the
-physical clean-Mac gate.
+No separate clean-machine record is required. The development-machine harness
+run and this checklist are the release evidence.
 
 ## Release checklist
 
@@ -369,16 +354,17 @@ physical clean-Mac gate.
 - [ ] Frozen text, image, and audio parity suites pass.
 - [ ] The model bundle verifies (header CRC-32, catalog digest, section SHA-256).
 - [ ] The embedded `aarch64-apple-darwin` build succeeds.
-- [ ] `scripts/release_e2e.sh` passes on a clean Apple Silicon Mac.
+- [ ] `scripts/release_e2e.sh` passes on the development Apple Silicon machine.
 - [ ] `otool -L` shows only libSystem.
 - [ ] `vtool -show-build` reports `minos 11.0`.
 - [ ] `cargo tree --edges normal,build,dev` shows only the root crate.
-- [ ] The binary is ad-hoc for local use, or Developer ID signed and notarized
-      for distribution.
-- [ ] `spctl --assess` is recorded and matches the signing mode.
+- [ ] The binary is ad-hoc signed for local use; no Developer ID signing or
+      notarization is planned.
+- [ ] `codesign --verify --strict` passes and `spctl --assess` is recorded as
+      rejected for the local-use build.
 - [ ] README, AGENTS.md, architecture, parity, benchmarks, API, and this guide
       describe the same state.
-- [ ] The version is bumped to `1.0.0` only after the gates pass.
+- [ ] The version remains `0.1.0`; no `1.0.0` distribution is claimed.
 - [ ] The release notes record the exact artifact and evidence.
 - [ ] No weights, secrets, or model files are committed.
 
@@ -401,7 +387,7 @@ that failed.
 ## References
 
 - [Implementation plan](../seldon-vault-lite-plan.md)
-- [ADR 0013 — macOS 1.0 release validation and distribution](adr/0013-macos-release-validation.md)
+- [ADR 0013 — macOS local-use release validation](adr/0013-macos-release-validation.md)
 - [ADR 0012 — NEON kernels and macOS ARM64 packaging](adr/0012-neon-simd-and-packaging.md)
 - [Architecture](architecture.md)
 - [HTTP API](api.md)

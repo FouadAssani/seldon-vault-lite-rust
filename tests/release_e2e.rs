@@ -5,8 +5,9 @@
 //! It does not use the development model cache. The flow covers token-id text
 //! embedding, text and audio ingestion, lexical and vector search, verification,
 //! compaction, and a search after the compaction restart. The shell harness
-//! scripts/release_e2e.sh covers the full frozen model and the HTTP API on a
-//! clean machine; this test keeps the same lifecycle in the default test suite.
+//! scripts/release_e2e.sh covers the full frozen model and the HTTP API on the
+//! development Apple Silicon machine; this test keeps the same lifecycle in the
+//! default test suite.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -104,7 +105,7 @@ fn assert_unit_norm(values: &[f32], dimension: usize) {
 }
 
 #[test]
-fn release_lifecycle_runs_in_a_clean_environment() {
+fn release_lifecycle_runs_in_a_sanitized_environment() {
     let root = temp_root();
     let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/model/tiny_audio");
     let audio_source =

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Clean-machine end-to-end validation for the macOS release artifact.
+# Local-use end-to-end validation for the macOS release artifact.
 #
 # This harness is intentionally independent of Cargo and of the development
 # model cache. It stages the release binary and the committed media fixtures in
 # a temporary install root, runs the binary with a sanitized environment, and
 # exercises the full text, image, audio, storage, and HTTP lifecycle.
 #
-# It is a companion to the physical clean-Mac gate described in docs/release.md:
-# passing this script on a development machine is necessary but not sufficient.
+# This is the release validation harness for the development Apple Silicon
+# machine. No separate clean-machine gate is required.
 #
 # Usage:
 #   scripts/release_e2e.sh [--binary PATH] [--model PATH] [--workdir DIR]
 #                          [--report PATH] [--skip-network-isolation] [--keep]
 #
-# --model is only for a non-embedded development binary. A clean-machine
-# validation must omit it and use the embedded-model release build.
+# --model is only for a non-embedded development binary. A release validation
+# must omit it and use the embedded-model release build.
 #
 # The script uses only macOS system tools (bash, env, awk, sed, grep, curl,
 # codesign, otool, vtool, spctl, shasum). It does not require Homebrew, Python,
@@ -41,14 +41,14 @@ Usage: scripts/release_e2e.sh [options]
   --binary PATH              release binary (default: embedded-full build if present,
                              otherwise target/aarch64-apple-darwin/release/seldon-vault-lite)
   --model PATH               optional model directory or .svlm for a non-embedded binary;
-                             omit for a clean-machine single-file validation
+                             omit for a single-file release validation
   --workdir DIR              staging directory (kept on exit)
   --report PATH              copy the JSON report to PATH
   --skip-network-isolation   do not attempt sandbox-exec network denial
   --keep                     keep the staging directory on success
   -h, --help                 show this help
 
-A clean-machine gate must use an embedded-model build, no model cache, and a
+A release validation must use an embedded-model build, no model cache, and a
 system-only PATH. See docs/release.md.
 EOF
 }
@@ -129,7 +129,7 @@ BINARY="$(absolute_path "$BINARY")"
 if [ -n "$MODEL" ]; then
     MODEL="$(absolute_path "$MODEL")"
     [ -e "$MODEL" ] || fail "model path does not exist: $MODEL"
-    warn "--model was provided; this run is not a single-file clean-machine validation"
+    warn "--model was provided; this run is not a single-file release validation"
 fi
 
 if [ -n "$WORKDIR" ]; then
@@ -339,11 +339,8 @@ artifact_checks() {
         *"Signature=adhoc"*)
             SIGNING="adhoc"
             ;;
-        *"Authority=Developer ID Application"*)
-            SIGNING="developer-id"
-            ;;
         *)
-            fail "unrecognized code signature: $signature_info"
+            fail "release validation expects an ad-hoc local-use signature: $signature_info"
             ;;
     esac
     if spctl --assess --type execute -vv "$BINARY" >"$WORKDIR/spctl.txt" 2>&1; then
@@ -351,10 +348,10 @@ artifact_checks() {
     else
         GATEKEEPER="rejected"
     fi
-    if [ "$SIGNING" = "adhoc" ]; then
-        warn "ad-hoc signed build: local use only; Gatekeeper assessment is $GATEKEEPER"
-    elif [ "$GATEKEEPER" != "accepted" ]; then
-        fail "Developer ID build is not accepted by Gatekeeper"
+    if [ "$GATEKEEPER" = "accepted" ]; then
+        warn "Gatekeeper accepted the ad-hoc build; assessment recorded"
+    else
+        echo "release-e2e: Gatekeeper rejected the ad-hoc build (expected for local use)"
     fi
     if command -v cargo >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
         cargo_tree="$(cd "$REPO_ROOT" && cargo tree --edges normal,build,dev 2>/dev/null)" \
@@ -363,7 +360,7 @@ artifact_checks() {
         [ "$lines" -eq 1 ] || fail "the Cargo graph contains dependencies"
         echo "release-e2e: Cargo graph contains only the root crate"
     else
-        echo "release-e2e: Cargo is unavailable; the zero-crate check is skipped on the clean machine"
+        echo "release-e2e: Cargo is unavailable; the zero-crate check is skipped"
     fi
     echo "release-e2e: linked libraries: $linked"
     echo "release-e2e: deployment target: minos 11.0"
@@ -372,7 +369,7 @@ artifact_checks() {
 
 echo "release-e2e: binary=$BINARY"
 echo "release-e2e: staging=$INSTALL"
-echo "release-e2e: clean environment HOME=$WORKDIR/home TMPDIR=$WORKDIR/tmp PATH=/usr/bin:/bin:/usr/sbin:/sbin"
+echo "release-e2e: sanitized environment HOME=$WORKDIR/home TMPDIR=$WORKDIR/tmp PATH=/usr/bin:/bin:/usr/sbin:/sbin"
 
 artifact_checks
 
