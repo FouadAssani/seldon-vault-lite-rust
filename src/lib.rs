@@ -2,19 +2,20 @@
 //!
 //! The crate exposes the CLI, the central error type, binary format readers,
 //! strict JSON, the FP32 tensor core, the frozen model tokenizer, the milestone
-//! M3 persistent store, and the milestone M4/M5 native media decoders and
-//! multimodal encoders. The HTTP API will be added at milestone M6; no empty
-//! module is created in advance.
+//! M3 persistent store, the milestone M4/M5 native media decoders and
+//! multimodal encoders, and the milestone M6 HTTP API and bounded job queue.
 //!
 //! Project contract: no third-party crate, only std and core::arch
 //! intrinsics.
 
 #![warn(missing_docs)]
 
+pub mod api;
 pub mod binary;
 pub mod cli;
 pub mod error;
 pub mod index;
+pub mod jobs;
 pub mod json;
 pub mod media;
 pub mod model;

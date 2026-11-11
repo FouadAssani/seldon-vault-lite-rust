@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M5 implemented on branch feat/m5-audio-embeddings — native WAV decoding, official audio preprocessing, audio embeddings, and multimodal text/audio search.**
+**Status: milestone M6 implemented on branch feat/m6-http-api — a native HTTP/1.1 API, strict request parsing, bounded connections and ingestion jobs, bearer authentication for LAN binds, observability, and graceful shutdown.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -29,8 +29,14 @@ tones, French speech, music, and rain-like noise. The CLI embeds audio, indexes
 audio documents, and runs text-to-audio and audio-to-audio vector search; both
 ranking paths are covered by reference tests. The scalar vision and audio
 towers are correctness baselines, not optimized results; broader ranking quality
-and performance remain future work. MP3, streaming audio, and HNSW remain future
-work.
+and performance remain future work. M6 adds a native std::net::TcpListener
+HTTP/1.1 server with a strict parser and bounded request bodies, the documented
+routes health, ready, models, stats, embeddings, documents, search, jobs, and
+shutdown, asynchronous ingestion through a bounded worker queue, cooperative
+cancellation, constant-time bearer authentication, loopback-only shutdown, and
+no TLS. The HTTP API accepts media only as bounded base64 JSON, never as a
+client-supplied path. MP3, streaming audio, TLS, keep-alive, and HNSW remain
+future work.
 
 ## Requirements
 
@@ -66,6 +72,18 @@ Audio embedding with the frozen model cache (WAV; the clip is converted to
 Token ids without the tokenizer, useful for diagnostics:
 
     cargo run -- embed --model-dir fixtures/model/tiny_text --ids 1,5,7,9,2 --dim 8
+
+Start the local HTTP API (default 127.0.0.1:8080; a non-loopback bind requires
+a token of at least 16 bytes, and there is no TLS):
+
+    cargo run --release -- serve --data-dir ./data
+    curl -s http://127.0.0.1:8080/health
+    curl -s http://127.0.0.1:8080/v1/models
+    curl -s -X POST http://127.0.0.1:8080/v1/shutdown \
+      -H 'Content-Type: application/json'
+
+See [docs/api.md](docs/api.md) for the request schemas, limits, error codes, job
+lifecycle, and security notes.
 
 Index a JSONL file and search it:
 
@@ -174,7 +192,14 @@ tests are ignored because they load the frozen model and embed several clips:
 | Broader ranking quality, vision performance, and audio performance | future work (M7) |
 | MP3 and streaming audio | future work |
 | HNSW approximate vector index | deferred until measurements |
-| HTTP API, jobs, and ingestion queue | pending (M6) |
+| Native HTTP/1.1 server with strict request parsing | implemented (M6) |
+| GET health, ready, models, stats; POST embeddings, documents, search, shutdown | implemented (M6) |
+| DELETE documents and jobs; GET job status and cancellation | implemented (M6) |
+| Bounded connections, request bodies, headers, and read/write timeouts | implemented (M6) |
+| Bounded ingestion queue, worker threads, and cooperative cancellation | implemented (M6) |
+| Bearer token for non-loopback binds; loopback-only shutdown | implemented (M6) |
+| Base64 media input; no client-supplied local paths | implemented (M6) |
+| TLS, keep-alive, and HTTP/2 | future work |
 
 ## Documentation
 
@@ -190,7 +215,9 @@ tests are ignored because they load the frozen model and embed several clips:
 - [ADR 0008 — Native baseline JPEG decoding](docs/adr/0008-native-jpeg-decoding.md)
 - [ADR 0009 — Image preprocessing and vision tower](docs/adr/0009-image-preprocessing-and-vision.md)
 - [ADR 0010 — Native WAV and audio embeddings](docs/adr/0010-native-wav-and-audio-embeddings.md)
-- [Architecture (M5 state)](docs/architecture.md)
+- [ADR 0011 — Native HTTP API, jobs, and hardening](docs/adr/0011-http-api-and-jobs.md)
+- [HTTP API contract](docs/api.md)
+- [Architecture (M6 state)](docs/architecture.md)
 - [Persistent storage and hybrid search](docs/storage.md)
 - [Formats and binary primitives](docs/formats.md)
 - [Tokenizer and prompts](docs/tokenizer.md)
@@ -238,6 +265,9 @@ Or simply:
   writer lock, and lock-free read-only views.
 - **CLI**: data on stdout, errors on stderr; exit codes 0 (success), 1
   (execution), 2 (usage).
+- **HTTP API**: native std::net::TcpListener HTTP/1.1, strict bounded parsing,
+  JSON errors, bounded connections and jobs, loopback default, bearer token for
+  non-loopback binds, no TLS, and loopback-only graceful shutdown.
 
 ## Rust skills (DSH)
 
