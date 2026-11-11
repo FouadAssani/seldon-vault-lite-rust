@@ -199,10 +199,10 @@ impl Tokenizer {
         let mut char_ids: HashMap<char, u32> = HashMap::new();
         for (token, id) in &vocab {
             let mut chars = token.chars();
-            if let Some(character) = chars.next() {
-                if chars.next().is_none() {
-                    char_ids.insert(character, *id);
-                }
+            if let Some(character) = chars.next()
+                && chars.next().is_none()
+            {
+                char_ids.insert(character, *id);
             }
         }
         if !char_ids.contains_key(&SPACE_MARKER) {
@@ -559,10 +559,10 @@ impl Tokenizer {
     fn best_merge(&self, symbols: &[u32]) -> Option<(u32, u32, u32)> {
         let mut best: Option<(u32, u32, u32, u32)> = None;
         for window in symbols.windows(2) {
-            if let Some(merge) = self.merges.get(&(window[0], window[1])) {
-                if best.is_none_or(|current| merge.rank < current.0) {
-                    best = Some((merge.rank, window[0], window[1], merge.merged_id));
-                }
+            if let Some(merge) = self.merges.get(&(window[0], window[1]))
+                && best.is_none_or(|current| merge.rank < current.0)
+            {
+                best = Some((merge.rank, window[0], window[1], merge.merged_id));
             }
         }
         best.map(|(_, left, right, merged_id)| (left, right, merged_id))

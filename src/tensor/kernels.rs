@@ -333,7 +333,7 @@ pub fn rope(
     base: f32,
     position_offset: usize,
 ) -> Result<()> {
-    if head_dim == 0 || head_dim % 2 != 0 {
+    if head_dim == 0 || !head_dim.is_multiple_of(2) {
         return Err(Error::internal(
             "RoPE head dimension must be a positive even number",
         ));
@@ -719,7 +719,7 @@ pub fn rope_with_inv_freq(
     inv_freq: &[f32],
     position_offset: usize,
 ) -> Result<()> {
-    if head_dim == 0 || head_dim % 2 != 0 {
+    if head_dim == 0 || !head_dim.is_multiple_of(2) {
         return Err(Error::internal(
             "RoPE head dimension must be a positive even number",
         ));
@@ -767,7 +767,7 @@ pub fn rope_with_inv_freq(
 
 /// Builds the inverse frequencies of the default RoPE scheme.
 pub fn rope_inv_freq(head_dim: usize, base: f32) -> Result<Vec<f32>> {
-    if head_dim == 0 || head_dim % 2 != 0 {
+    if head_dim == 0 || !head_dim.is_multiple_of(2) {
         return Err(Error::internal(
             "RoPE head dimension must be a positive even number",
         ));

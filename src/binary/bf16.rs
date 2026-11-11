@@ -49,8 +49,14 @@ pub fn decode_bf16(bytes: &[u8], output: &mut [f32]) -> Result<()> {
             bytes.len()
         )));
     }
-    for (chunk, value) in bytes.chunks_exact(2).zip(output.iter_mut()) {
-        *value = bf16_to_f32(u16::from_le_bytes([chunk[0], chunk[1]]));
+    let (chunks, remainder) = bytes.as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err(Error::internal(
+            "BF16 length check did not consume all bytes",
+        ));
+    }
+    for (chunk, value) in chunks.iter().zip(output.iter_mut()) {
+        *value = bf16_to_f32(u16::from_le_bytes(*chunk));
     }
     Ok(())
 }
@@ -73,7 +79,13 @@ pub fn encode_bf16(values: &[f32], output: &mut [u8]) -> Result<()> {
             output.len()
         )));
     }
-    for (value, chunk) in values.iter().zip(output.chunks_exact_mut(2)) {
+    let (chunks, remainder) = output.as_chunks_mut::<2>();
+    if !remainder.is_empty() {
+        return Err(Error::internal(
+            "BF16 length check did not consume all bytes",
+        ));
+    }
+    for (value, chunk) in values.iter().zip(chunks.iter_mut()) {
         chunk.copy_from_slice(&f32_to_bf16(*value).to_le_bytes());
     }
     Ok(())

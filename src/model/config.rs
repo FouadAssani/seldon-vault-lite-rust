@@ -181,12 +181,12 @@ impl TextConfig {
                 "attention bias is not part of the frozen model",
             ));
         }
-        if let Some(dropout) = optional_float(text, "attention_dropout")? {
-            if dropout != 0.0 {
-                return Err(Error::unsupported(
-                    "attention dropout is not implemented by the inference engine",
-                ));
-            }
+        if let Some(dropout) = optional_float(text, "attention_dropout")?
+            && dropout != 0.0
+        {
+            return Err(Error::unsupported(
+                "attention dropout is not implemented by the inference engine",
+            ));
         }
 
         validate_caps(&ConfigNumbers {
@@ -571,12 +571,12 @@ fn validate_head_layout(
             "key/value head count {num_key_value_heads} is not in 1..={num_attention_heads}"
         )));
     }
-    if num_attention_heads % num_key_value_heads != 0 {
+    if !num_attention_heads.is_multiple_of(num_key_value_heads) {
         return Err(Error::corrupt(format!(
             "attention head count {num_attention_heads} is not a multiple of key/value head count {num_key_value_heads}"
         )));
     }
-    if head_dim == 0 || head_dim > MAX_HEAD_DIM || head_dim % 2 != 0 {
+    if head_dim == 0 || head_dim > MAX_HEAD_DIM || !head_dim.is_multiple_of(2) {
         return Err(Error::corrupt(format!(
             "head dimension {head_dim} must be a positive even value at most {MAX_HEAD_DIM}"
         )));
