@@ -188,7 +188,7 @@ Interpretation:
   replay the six-case audio parity tests and the text-to-audio ranking test
   before reporting a gain.
 
-## NEON kernels — milestone M7 (in progress)
+## NEON kernels — milestone M7
 
 This section records the first M7 optimization step. The scalar path remains
 the correctness oracle; the NEON path is selected at runtime and falls back to
@@ -327,5 +327,46 @@ target/embedded/aarch64-apple-darwin/release/seldon-vault-lite \
 | Embedded release | 1.5 MB | 48,590-byte embedded bundle | identical bytes |
 
 The embedded binary ignored the nonexistent `--model-dir` and produced the same
-8-dimensional vector. The full 1.5 GB embedded build and its startup, resident
-memory, and Mach-O measurements remain the final M7 packaging step.
+8-dimensional vector.
+
+### Full embedded build
+
+The frozen 1,525,784,026-byte bundle was embedded into the release binary:
+
+```bash
+SELDON_MODEL_BUNDLE="$PWD/.model-cache/f9972ac22e696a105c482202646979e33e4b5a1e/model.svlm" \
+  CARGO_TARGET_DIR=target/embedded-full \
+  cargo build --release --features embedded-model --target aarch64-apple-darwin
+```
+
+| Item | Value |
+|---|---|
+| Build time | 2 m 24 s |
+| Build directory | 10 GiB |
+| Binary size | 1.4 GiB (1,525,784,026-byte bundle plus code) |
+| Linked libraries | `/usr/lib/libSystem.B.dylib` only |
+| Deployment target | `minos 11.0` |
+| Code signature | ad-hoc, linker-signed |
+| Gatekeeper | `spctl` rejects because the binary is not notarized |
+
+| Run | Wall time | User time | System time | Max RSS | Peak footprint |
+|---|---:|---:|---:|---:|---:|
+| Cold (first run) | 18.68 s | 6.54 s | 1.31 s | 2,617,475,072 B (~2.44 GiB) | 1,091,750,048 B (~1.02 GiB) |
+| Warm (second run) | 6.75 s | 6.52 s | 0.21 s | 2,617,458,688 B (~2.44 GiB) | 1,091,733,664 B (~1.02 GiB) |
+
+The cold run pages the 1.4 GiB binary in from disk; the warm run is comparable
+to the directory path (6.96 s) and the bundle-file path (7.40 s). The maximum
+RSS includes the file-backed embedded bundle pages; the peak memory footprint
+is about 1.02 GiB, dominated by the FP32 text weights and activations.
+
+The embedded binary produced byte-identical 768-dimensional vectors to the
+directory-loaded binary for:
+
+- text token ids `2,5,6,7,1`;
+- `fixtures/media/quadrants_16x16.png` at the 70-token budget;
+- `fixtures/media/audio/short_tone_100ms.wav`.
+
+The `spctl` rejection is expected for an ad-hoc linker-signed binary. Local
+execution works without a developer account. Distribution to other Macs still
+requires a Developer ID signature and notarization; that is a distribution
+concern for M8, not a runtime dependency of the product.

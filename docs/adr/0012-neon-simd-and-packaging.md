@@ -1,6 +1,6 @@
 # ADR 0012 — NEON kernels and macOS ARM64 packaging
 
-- **Status:** accepted for the NEON path; the packaging design is in progress
+- **Status:** accepted
 - **Date:** 2026-11-11
 - **Milestone:** M7
 - **Supersedes:** none
@@ -84,7 +84,7 @@ mean pooling. The official text, image, and audio parity tests keep their
 existing `1e-4` absolute/relative and `0.9999` cosine thresholds; no threshold
 was loosened.
 
-### 5. Packaging design (container and packer implemented)
+### 5. Packaging design (implemented)
 
 The packaging step uses a versioned, bounded container instead of a bare
 directory:
@@ -161,8 +161,12 @@ binary. It uses only `std` and first-party code.
   is 24.47 requests/s, up from 2.43 requests/s. The frozen text, image, and
   audio parity suites pass.
 - The container format and packer are implemented and a real frozen bundle was
-  verified. Embedded loading, Mach-O size/startup measurements, and the final
-  distribution checks remain open.
+  verified. Bundle-backed loading and the full 1.5 GB embedded build are
+  verified: 1.4 GiB Mach-O, only libSystem, `minos 11.0`, byte-identical
+  text/image/audio vectors, 18.68 s cold and 6.75 s warm startup, and about
+  2.44 GiB maximum RSS.
+- The binary is ad-hoc linker-signed and local execution works. Notarized
+  distribution to other Macs remains an M8 distribution concern.
 - No third-party crate, FFI, or `unsafe` outside the NEON intrinsics is
   introduced.
 
@@ -178,8 +182,13 @@ binary. It uses only `std` and first-party code.
 - `cargo build --release --target aarch64-apple-darwin`
 - `cargo build --manifest-path tools/model-packer/Cargo.toml --release`
 - `model-packer pack` on the frozen revision, followed by `model-packer verify`
+- `cargo test --release --test bundle_loading` (tiny) and the ignored frozen
+  text, image, and audio bundle tests
+- `SELDON_MODEL_BUNDLE=<bundle> cargo build --release --features embedded-model`
 - `cargo tree --edges normal,build,dev` shows only the root crate.
 - `otool -L` shows only `libSystem`; `vtool -show-build` reports `minos 11.0`.
+- The embedded binary produced identical text, image, and audio vectors to the
+  directory-loaded binary.
 
 ## References
 

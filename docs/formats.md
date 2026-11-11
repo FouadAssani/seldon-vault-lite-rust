@@ -1,7 +1,7 @@
 # Formats and binary primitives
 
 This document describes the formats implemented through milestone M7 (NEON
-kernels and the first packaging step) and the validation rules that protect the
+kernels and verified macOS ARM64 packaging) and the validation rules that protect the
 product from hostile input. ADR 0002 is the binary format decision record, ADR
 0004 covers the text-embedding numerical path, ADR 0005 covers persistent
 storage and hybrid search, ADR 0007 covers native PNG/DEFLATE decoding, ADR 0008
@@ -466,9 +466,8 @@ silently accepted.
 
 Milestone M7 adds `src/bundle`, a versioned container for the frozen model
 files, and `tools/model-packer`, a Rust `std` packer. The development loaders
-still read a model directory. The final binary will embed the bundle with
-`include_bytes!` and read sections from the embedded bytes; that loading path
-is the remaining M7 packaging work.
+read a model directory or a `.svlm` bundle file. The final binary embeds the
+bundle with `include_bytes!` and reads sections from the embedded bytes.
 
 ### Layout
 
@@ -599,10 +598,23 @@ a `OnceLock`, and all text, image, and audio loaders use the embedded sections.
 The `--model-dir` argument is ignored in this mode. The feature has no
 third-party dependency and is disabled by default.
 
-A tiny-bundle embedded build was verified: the binary produced the same
+A tiny-bundle embedded build was verified first: the binary produced the same
 8-dimensional vector as the directory-loaded tiny model, ignored a nonexistent
-`--model-dir`, and was 1.5 MB instead of 1.4 MB. The full 1.5 GB embedded build
-and its Mach-O size/startup measurements are the remaining packaging step.
+`--model-dir`, and was 1.5 MB instead of 1.4 MB.
+
+The full frozen 1,525,784,026-byte bundle was then embedded. The resulting
+Mach-O is 1.4 GiB, links only `/usr/lib/libSystem.B.dylib`, and records
+`minos 11.0`. The embedded binary produced byte-identical 768-dimensional
+vectors to the directory-loaded binary for text token ids, a PNG image at the
+70-token budget, and the 100 ms WAV tone. Cold startup was 18.68 s (paging the
+1.4 GiB binary from disk); warm startup was 6.75 s. Maximum RSS was about
+2.44 GiB and peak memory footprint about 1.02 GiB. See
+[benchmarks.md](benchmarks.md) for the detailed measurements.
+
+The binary is ad-hoc linker-signed. `spctl` rejects it because it is not
+notarized; local execution works without a developer account. Distribution to
+other Macs requires a Developer ID signature and notarization, which is a
+distribution concern for M8, not a runtime dependency.
 
 ## Tokenization
 

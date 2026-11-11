@@ -12,7 +12,8 @@ produced 9 sections and 1,525,784,026 bytes; `verify` re-parsed the file,
 checked the header CRC-32 and catalog digest, and checked every section
 SHA-256. Bundle-backed loading from a model directory or a `.svlm` file is implemented
 and produces identical embeddings. Embedded `include_bytes!` loading and the
-Mach-O size/startup measurements remain in progress.
+full 1.5 GB embedded Mach-O build are verified; notarized distribution remains
+an M8 concern.
 
 ## Constraints
 

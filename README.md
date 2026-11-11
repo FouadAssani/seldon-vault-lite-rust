@@ -3,7 +3,7 @@
 Local multimodal embedding, indexing, and search engine, written in Rust std
 only (no third-party crates), specialized for google/embeddinggemma-2.
 
-**Status: milestone M7 in progress on branch feat/m7-neon-simd-packaging — NEON kernels with runtime dispatch and scalar fallback, differential kernel tests, and frozen-model parity replay for text, image, and audio. macOS ARM64 packaging is in progress.**
+**Status: milestone M7 implemented on branch feat/m7-neon-simd-packaging — NEON kernels with runtime dispatch and scalar fallback, differential kernel tests, frozen-model parity replay, a versioned model bundle and Rust std packer, bundle-backed loading, and a verified 1.4 GiB embedded macOS ARM64 binary. Notarized distribution remains an M8 concern.**
 M0, M1, M2, and M3 are complete: the std-only foundations, strict binary
 formats, FP32 tensor core, frozen model manifest, exact BPE tokenizer, official
 prompts, the full EmbeddingGemma 2 text encoder with Matryoshka dimensions, and
@@ -45,8 +45,11 @@ parity suites still pass. The versioned model container and Rust std packer
 are implemented and a real frozen bundle is verified. Bundle-backed loading
 accepts a model directory or a `.svlm` file and produces identical embeddings;
 a compile-time `embedded-model` feature embeds the bundle and ignores the
-model path. The full 1.5 GB embedded build and Mach-O size/startup measurements
-remain in progress.
+model path. The full 1.5 GB embedded build is verified: a 1.4 GiB Mach-O linking
+only libSystem, `minos 11.0`, byte-identical text/image/audio vectors, 18.68 s
+cold / 6.75 s warm startup, and about 2.44 GiB maximum RSS. The binary is
+ad-hoc signed; local use works, while notarized distribution remains an M8
+concern.
 
 ## Requirements
 
@@ -215,7 +218,7 @@ tests are ignored because they load the frozen model and embed several clips:
 | Versioned model container and Rust std packer | implemented (M7) |
 | Bundle-backed loading from a model directory or .svlm file | implemented (M7) |
 | Compile-time embedded model bundle (embedded-model feature) | implemented (M7) |
-| Full 1.5 GB embedded Mach-O size/startup verification | in progress (M7) |
+| Full 1.5 GB embedded Mach-O size/startup verification | implemented (M7) |
 | TLS, keep-alive, and HTTP/2 | future work |
 
 ## Documentation

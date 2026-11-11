@@ -66,4 +66,4 @@ if ! printf '%s\n' "$build_info" | grep -q "minos 11.0"; then
     exit 1
 fi
 
-echo "M7 verification passed (NEON kernels and scalar fallback; packaging still in progress)."
+echo "M7 verification passed (NEON kernels, model bundle, and embedded packaging)."

@@ -739,7 +739,7 @@ a dependency or if minos is not 11.0.
    bounded connections, asynchronous ingestion jobs with cooperative
    cancellation, observability counters, and loopback graceful shutdown.
    HNSW, TLS, keep-alive, and MP3 remain future work.
-5. **M7**: in progress on branch feat/m7-neon-simd-packaging. NEON kernels
+5. **M7**: implemented on branch feat/m7-neon-simd-packaging. NEON kernels
    with runtime dispatch, scalar fallback, differential tests, and frozen-model
    parity replay are implemented. The versioned model container in
    `src/bundle` and the Rust std packer in `tools/model-packer` are implemented
@@ -747,9 +747,11 @@ a dependency or if minos is not 11.0.
    `src/model/source.rs` to accept a model directory or a `.svlm` bundle file;
    the bundle path verifies the header CRC-32, catalog digest, and section
    SHA-256 and produces identical embeddings. A compile-time `embedded-model`
-   feature embeds the bundle with `include_bytes!` and was verified with a
-   tiny bundle. The full 1.5 GB embedded build and Mach-O size/startup
-   verification remain in progress.
+   feature embeds the bundle with `include_bytes!`. The full 1.5 GB embedded
+   build is verified: a 1.4 GiB Mach-O linking only libSystem, `minos 11.0`,
+   byte-identical text/image/audio vectors, 18.68 s cold and 6.75 s warm
+   startup, and about 2.44 GiB maximum RSS. The binary is ad-hoc linker-signed;
+   local execution works, while notarized distribution remains an M8 concern.
 6. **M8/M9**: final macOS validation, then Linux port.
 
 None of these steps may be declared complete without reproducible tests and
