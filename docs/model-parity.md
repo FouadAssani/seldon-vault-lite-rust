@@ -2,7 +2,7 @@
 
 ## Status
 
-At milestone M0, this document sets the parity **criteria** and the fixture policy. No model weights are frozen or loaded yet, and no real golden test exists. The tolerance values below are initial targets; they will be confirmed or adjusted with the official implementation at milestone M2, and any adjustment will be documented with its justification.
+At milestone M1, the format and tensor core is implemented and tested, and one format fixture exists. No model weights are frozen or loaded yet, and no model parity golden test exists. Tokenization and inference remain gated on the frozen model manifest. The tolerance values below are initial targets; they will be confirmed or adjusted with the official implementation at milestone M2, and any adjustment will be documented with its justification.
 
 ## Principle
 
@@ -33,7 +33,7 @@ Rules:
 - no complete weights, no multi-gigabyte file;
 - stable, versioned naming.
 
-The `fixtures/README.md` file describes the policy; real fixtures will be added at milestones M1 (formats), M2 (text), and M4/M5 (media).
+The `fixtures/README.md` file describes the policy. A format fixture is present at M1 (`fixtures/formats/mini.safetensors`); model parity fixtures will be added after the model freeze, then text fixtures at M2 and media fixtures at M4/M5.
 
 ## Mandatory coverage
 

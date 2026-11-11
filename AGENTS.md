@@ -8,7 +8,7 @@
 
 A step is complete only if **its tests pass, its results are reproducible, and no regression is observed in the scope already validated**. A successful compilation is not proof. Never declare a modality "supported" if it only returns a vector computed from a file name or a textual marker.
 
-State at the time of writing (2026-11-11): the repository contains the plan, the README, and the Rust skills in `.dsh/skills/`; there is still no `Cargo.toml` and no `src/`. The first task is milestone **M0**.
+State at the time of writing (2026-11-11): milestone **M0** is complete; milestone **M1** is in progress on branch `feat/m1-formats-tensors` with the bounded reader, SHA-256, BF16 conversion, strict JSON, Safetensors reader, FP32 tensors, and scalar kernels implemented and tested. The frozen model manifest and exact tokenization are the remaining M1 deliverables; no modality is supported yet.
 
 ## 1. Mission and scope
 
@@ -91,11 +91,11 @@ Never skip the test step to "save time", and never merge an unvalidated optimiza
 
 ### Starting point — M0
 
-- [ ] Create `Cargo.toml` with no dependencies and a compilable `src/main.rs` with a minimal CLI (`version`).
-- [ ] Write the founding ADR: `std` only, formats, persistent data, `unsafe` policy, model version, and compatibility.
-- [ ] Record the invariants: no crash on hostile input, explicit memory bounds, no `unwrap()` on external input, deterministic scalar computations.
-- [ ] Create the `docs/`, `src/`, `tests/`, `fixtures/`, and `tools/model-packer/` tree without unnecessary empty modules.
-- [ ] Verify the empty Cargo graph, build for `aarch64-apple-darwin`, and check linked libraries.
+- [x] Create `Cargo.toml` with no dependencies and a compilable `src/main.rs` with a minimal CLI (`version`).
+- [x] Write the founding ADR: `std` only, formats, persistent data, `unsafe` policy, model version, and compatibility.
+- [x] Record the invariants: no crash on hostile input, explicit memory bounds, no `unwrap()` on external input, deterministic scalar computations.
+- [x] Create the `docs/`, `src/`, `tests/`, `fixtures/`, and `tools/model-packer/` tree without unnecessary empty modules.
+- [x] Verify the empty Cargo graph, build for `aarch64-apple-darwin`, and check linked libraries.
 
 ## 6. Verification commands
 

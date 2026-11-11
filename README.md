@@ -1,13 +1,22 @@
 # Seldon Vault Lite
 
-Local multimodal embedding, indexing, and search engine, written in Rust `std` only (no third-party crates), specialized for `google/embeddinggemma-2`.
+Local multimodal embedding, indexing, and search engine, written in Rust
+`std` only (no third-party crates), specialized for
+`google/embeddinggemma-2`.
 
-**Status: milestone M0 — foundations.** The CLI exposes `version` and `help`. The `serve`, `embed`, `index`, `search`, and `verify` commands will be added in later milestones. No modality (text, image, audio) is declared supported yet: no fake result is returned.
+**Status: milestone M1 — formats and tensor core (in progress).** The binary
+reader, SHA-256, BF16 conversion, strict JSON parser, Safetensors reader, FP32
+tensors, and scalar kernels are implemented and tested. Tokenization, the
+frozen model manifest, and inference are not implemented yet. The CLI still
+exposes only `version` and `help`. No modality (text, image,
+audio) is declared supported: no fake result is returned.
 
 ## Requirements
 
 - macOS 11 or later on Apple Silicon (`aarch64-apple-darwin`);
-- stable Rust toolchain (validated with 1.99.1), selected by `rust-toolchain.toml` with `clippy`, `rustfmt`, and the `aarch64-apple-darwin` target;
+- stable Rust toolchain (validated with 1.99.1), selected by
+  `rust-toolchain.toml` with `clippy`,
+  `rustfmt`, and the `aarch64-apple-darwin` target;
 - no other tool is required to build.
 
 The `x86_64-apple-darwin` target (Intel Mac) is explicitly excluded.
@@ -18,11 +27,32 @@ The `x86_64-apple-darwin` target (Intel Mac) is explicitly excluded.
 cargo build
 cargo run -- version
 cargo run -- --help
+cargo test
 ```
+
+## What milestone M1 provides
+
+| Area | Status |
+|---|---|
+| Bounded byte reader, checked offsets, file-size cap | implemented |
+| Streaming SHA-256 and file fingerprints | implemented |
+| BF16 to FP32 decoding and FP32 to BF16 encoding | implemented |
+| Strict JSON parser with caps and Unicode escapes | implemented |
+| Read-only Safetensors parser with offset/overlap validation | implemented |
+| FP32 tensors, shapes, views, and element caps | implemented |
+| Scalar add/mul/matmul/dot/softmax/RMSNorm/GELU/GeGLU/RoPE/attention/L2 | implemented |
+| Deterministic Safetensors fixture | implemented |
+| Frozen model manifest and tokenization parity | pending |
+| Text/image/audio embeddings | pending |
+
+The format and tensor layers are documented in
+[docs/formats.md](docs/formats.md) and decided in
+[docs/adr/0002-formats-and-tensors.md](docs/adr/0002-formats-and-tensors.md).
 
 ## Full verification
 
-The `scripts/verify.sh` script runs the entire quality gate. The equivalent commands are:
+The `scripts/verify.sh` script runs the entire quality gate. The
+equivalent commands are:
 
 ```bash
 cargo fmt --check
@@ -46,19 +76,26 @@ Or simply:
 
 ## Technical contract
 
-- **Zero third-party crates**: `Cargo.toml` contains no dependency section; only `std` and `core::arch` are allowed.
-- **100% Rust product code**: no C, C++, FFI, `asm!`, or dynamic application library.
+- **Zero third-party crates**: `Cargo.toml` contains no dependency
+  section; only `std` and `core::arch` are allowed.
+- **100% Rust product code**: no C, C++, FFI, `asm!`, or dynamic
+  application library.
 - **Initial target**: `aarch64-apple-darwin`, macOS 11.0 minimum.
-- **Persistent data**: user data, logs, and snapshots will live outside the binary; weights are not committed.
-- **Robustness**: no panic on hostile input, explicit memory bounds, checked arithmetic, deterministic FP32 scalar path.
-- **CLI**: data on `stdout`, errors on `stderr`; exit codes `0` (success), `1` (execution), `2` (usage).
+- **Persistent data**: user data, logs, and snapshots will live outside the
+  binary; weights are not committed.
+- **Robustness**: no panic on hostile input, explicit memory bounds, checked
+  arithmetic, deterministic FP32 scalar path.
+- **CLI**: data on `stdout`, errors on `stderr`; exit codes
+  `0` (success), `1` (execution), `2` (usage).
 
 ## Documentation
 
 - [Implementation plan](seldon-vault-lite-plan.md)
 - [Agent and contributor guidelines](AGENTS.md)
 - [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
-- [Architecture (M0 state)](docs/architecture.md)
+- [ADR 0002 — Formats and tensors](docs/adr/0002-formats-and-tensors.md)
+- [Architecture (M1 state)](docs/architecture.md)
+- [Formats and binary primitives](docs/formats.md)
 - [Numerical parity and reference datasets](docs/model-parity.md)
 - [Fixtures policy](fixtures/README.md)
 
@@ -66,7 +103,9 @@ All project documentation and code are written in English.
 
 ## Rust skills (DSH)
 
-The skills from the [actionbook/rust-skills](https://github.com/actionbook/rust-skills) repository are installed in `.dsh/skills/` (version 2.0.9, commit `5c40d3a`).
+The skills from the [actionbook/rust-skills](https://github.com/actionbook/rust-skills)
+repository are installed in `.dsh/skills/` (version 2.0.9, commit
+`5c40d3a`).
 
 Update:
 

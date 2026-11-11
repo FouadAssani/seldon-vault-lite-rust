@@ -1,0 +1,180 @@
+# Formats and binary primitives
+
+This document describes the formats implemented at milestone M1 and the
+validation rules that protect the product from hostile input. ADR 0002 is the
+decision record; this document is the operational reference.
+
+## Trust boundary
+
+Everything read from disk, the network, or a command line is untrusted until a
+parser has validated it. Parsers never panic, never allocate from an unchecked
+length, and never execute metadata. Failures are typed:
+
+| Error | Meaning | Exit code |
+|---|---|---|
+| `Usage` | invalid command or argument | 2 |
+| `Io` | input/output failure | 1 |
+| `Corrupt` | malformed or truncated input | 1 |
+| `LimitExceeded` | a documented cap was reached | 1 |
+| `Unsupported` | valid but unimplemented dtype or feature | 1 |
+| `Internal` | violated product invariant | 1 |
+
+## JSON
+
+The strict parser lives in `src/json`. It implements the RFC 8259
+subset needed by the product:
+
+- values: object, array, string, number, boolean, null;
+- strings: UTF-8, escapes, and `\uXXXX` including surrogate pairs;
+- numbers: integer or decimal notation with an optional exponent;
+- objects: ordered deterministically with a `BTreeMap`.
+
+Rejected:
+
+- duplicate keys;
+- trailing commas and trailing content;
+- leading zeros, a leading plus sign, `.5`, `1.`, and an
+  empty exponent;
+- NaN, Infinity, and values that overflow to a non-finite f64;
+- unescaped control characters;
+- lone surrogates and invalid escapes;
+- invalid UTF-8 in byte input.
+
+### Limits
+
+| Limit | Default | Purpose |
+|---|---|---|
+| Input size | 16 MiB | configuration and Safetensors headers |
+| Nesting depth | 128 | recursion and stack safety |
+| String size | 1 MiB | avoid giant keys or values |
+| Entries per container | 100,000 | avoid quadratic object work |
+| Total values | 1,000,000 | bound parser work |
+
+Limits are configurable with `json::Limits`.
+
+### Numbers
+
+`Number::Unsigned` and `Number::Signed` preserve integer
+tokens exactly. `Number::Float` covers decimal and exponent notation
+and integers outside the 64-bit ranges. Callers that require exact integers
+must use `as_u64` or `as_i64`, which reject float tokens.
+
+## Safetensors
+
+Layout:
+
+```text
++----------------------+ 8 bytes, little-endian
+| header length (u64)  |
++----------------------+
+| JSON header          | header length bytes, UTF-8
++----------------------+
+| data region          | remaining bytes
++----------------------+
+```
+
+The header is an object. The optional `__metadata__` key maps strings
+to strings. Every other key is a tensor name whose value is an object with
+exactly `dtype`, `shape`, and `data_offsets`.
+
+Supported dtypes: `F32` and `BF16`. `F16` is
+rejected because FP16 is forbidden for activations.
+
+### Validation
+
+- header length fits `usize` and is at most 16 MiB;
+- header is valid UTF-8 and a JSON object;
+- at most 100,000 tensors and 10,000 metadata entries;
+- dtype, shape, and offsets are present; unknown fields are rejected;
+- shape entries are non-negative integer tokens, rank at most 8, element count
+  checked for overflow;
+- `begin <= end`; `end` is within the data region;
+- the byte span equals `numel * dtype_size`;
+- non-empty tensors are aligned to the element size;
+- zero-sized tensors occupy no byte and cannot overlap;
+- non-empty tensors may not overlap;
+- metadata values are strings and are never executed.
+
+### Decoding
+
+`TensorEntry::to_f32` returns an owned FP32 `Tensor`. F32
+bytes are read little-endian. BF16 is widened exactly. The result must respect
+the tensor element cap.
+
+### Fingerprint
+
+`SafetensorsFile::fingerprint_hex` returns the lowercase SHA-256 of
+the complete file. It is intended for the model manifest and for verifying
+weights before use.
+
+## BF16 and FP32
+
+- BF16 is the upper 16 bits of FP32; decoding is exact.
+- Encoding rounds to nearest, ties to even.
+- NaN is quieted with its sign preserved.
+- Values above the largest finite BF16 round to infinity.
+- Activations are always FP32. BF16 is storage only.
+- FP16 is rejected at dtype parsing.
+
+## Tensors
+
+- `Shape`: rank at most 8, dimension at most `u32::MAX`,
+  element count checked at construction.
+- `Tensor`: owned FP32 data with a validated shape; at most
+  `2^30` elements (4 GiB).
+- `TensorView`: borrowed shape and data, no copy.
+- Row-major layout; strides are in elements.
+- Non-finite values are detected before they enter the embedding space.
+
+## Scalar kernels
+
+The reference path is deterministic, single-threaded, and unsafe-free:
+
+| Kernel | Notes |
+|---|---|
+| add, sub, mul, scale | element-wise, length-checked |
+| dot | checked, rejects non-finite result |
+| matmul | row-major, reusable output buffer |
+| softmax | max subtraction, explicit infinity handling |
+| RMSNorm | non-negative epsilon, weight applied after normalization |
+| GELU tanh | Gemma-style approximation |
+| GeGLU | gelu(gate) * up |
+| RoPE | rotate-half, even head dimension |
+| attention | scaled dot product, optional causal mask |
+| L2 normalization | rejects zero vectors |
+
+## Fixture
+
+`fixtures/formats/mini.safetensors` is a deterministic 281-byte
+fixture generated outside the product with Python's `json` and
+`struct` modules. It contains:
+
+- metadata `generator` and `version`;
+- `alpha`: F32 `[2, 2]` with values 1, 2, 3, 4;
+- `beta`: BF16 `[3]` with values 0.5, -1.0, 2.0;
+- `empty`: F32 `[0]` with zero bytes.
+
+SHA-256:
+`caca3b030faeb4ded52275d54c2fca0f2ee0d6b1aeeb8ab1819e0785b1f89ca7`
+
+The fixture is not a model parity fixture. It proves format handling only.
+
+## Internal weight container (planned)
+
+The packer will produce a Rust-defined container with:
+
+- magic and version;
+- framed sections with bounded lengths;
+- a manifest with names, dtypes, shapes, offsets, and SHA-256;
+- a checksum over the container;
+- no executable metadata.
+
+The format will be implemented at the packaging milestone (M12). Until then,
+weights remain external development files.
+
+## Tokenization (gated)
+
+Tokenization is part of M1 but is not implemented yet. Exact token ID equality
+requires the official tokenizer files and a frozen model revision. No fixture
+is fabricated. The next steps are the model manifest, the tokenizer inventory,
+and golden token IDs from the official implementation.
