@@ -370,3 +370,33 @@ The `spctl` rejection is expected for an ad-hoc linker-signed binary. Local
 execution works without a developer account. Distribution to other Macs still
 requires a Developer ID signature and notarization; that is a distribution
 concern for M8, not a runtime dependency of the product.
+
+## Clean-environment release validation — milestone M8
+
+The full embedded artifact was exercised with `scripts/release_e2e.sh` on
+2026-11-11 (report timestamp 2026-11-11T21:03:06Z) against the development
+machine. The harness staged only the binary
+and the committed media fixtures, ran with `env -i`, a temporary HOME and
+TMPDIR, and a system-only PATH, and completed the text/image/audio embedding,
+ingestion, lexical/vector/hybrid search, verify, compact, restart, and loopback
+HTTP lifecycle.
+
+| Item | Value |
+|---|---|
+| Platform | arm64 |
+| macOS | 26.5.1 |
+| Artifact | embedded full bundle |
+| Binary SHA-256 | `b2e697b78602d8eaf82fc170b8d92056ff0088a38bcb77bbfd6f648cf52902e8` |
+| Binary size | 1,539,215,600 bytes |
+| Version | `seldon-vault-lite 0.1.0 (aarch64-apple-darwin)` |
+| Signing | ad-hoc |
+| Gatekeeper | rejected (expected for ad-hoc) |
+| Network isolation | disabled in this run; `sandbox-exec` was unavailable in the execution sandbox |
+| Documents after restart | 3 |
+
+This is a development-machine run, not the physical clean-Mac gate. It records
+the lifecycle and artifact properties; it is not a new performance claim. A
+clean-Mac run must record the network-isolation mode as enabled and archive the
+JSON report with the release candidate. The image and audio towers remain scalar
+correctness baselines; their latency is dominated by the scalar path and is not
+an optimized result.

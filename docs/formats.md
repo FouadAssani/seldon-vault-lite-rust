@@ -1,8 +1,9 @@
 # Formats and binary primitives
 
-This document describes the formats implemented through milestone M7 (NEON
-kernels and verified macOS ARM64 packaging) and the validation rules that protect the
-product from hostile input. ADR 0002 is the binary format decision record, ADR
+This document describes the formats implemented through milestone M8 (macOS
+release validation) and the validation rules that protect the product from
+hostile input. M8 does not change a format; it adds the clean-environment
+release gate. ADR 0002 is the binary format decision record, ADR
 0004 covers the text-embedding numerical path, ADR 0005 covers persistent
 storage and hybrid search, ADR 0007 covers native PNG/DEFLATE decoding, ADR 0008
 covers native baseline JPEG decoding, ADR 0010 covers native WAV decoding and

@@ -1,6 +1,10 @@
 # Development model cache; weights and tokenizer files are never committed.
 .model-cache/
 
+# Local release validation staging and reports
+release-validation/
+release-validation-report.json
+
 # macOS metadata
 .DS_Store
 

@@ -1,13 +1,14 @@
-# Architecture — milestone M6 state
+# Architecture — milestone M8 state
 
 ## Purpose
 
-This document describes the repository organization at milestone M5 and the
+This document describes the repository organization at milestone M8 and the
 boundaries that later milestones must respect. It does not replace ADR 0001,
 ADR 0002, ADR 0003, ADR 0004, ADR 0005, ADR 0006, ADR 0007, ADR 0008,
-ADR 0009, ADR 0010, or ADR 0011, which are authoritative for foundational,
-format, model, text-embedding, storage/index, snapshot/compaction, PNG/DEFLATE,
-JPEG, image preprocessing/vision, WAV/audio, and HTTP API/jobs decisions.
+ADR 0009, ADR 0010, ADR 0011, ADR 0012, or ADR 0013, which are authoritative
+for foundational, format, model, text-embedding, storage/index,
+snapshot/compaction, PNG/DEFLATE, JPEG, image preprocessing/vision, WAV/audio,
+HTTP API/jobs, NEON/packaging, and macOS release validation decisions.
 
 ## Current state
 
@@ -89,6 +90,7 @@ The repository contains:
     ├── audio_tiny.rs       # tiny official audio tower and text-connection tests
     ├── text_embeddings.rs  # tiny and full-model text parity tests
     ├── http_api.rs         # real-server HTTP/1.1 integration tests
+    ├── release_e2e.rs      # clean-environment release lifecycle test
     └── tokenizer.rs        # golden tokenizer and manifest parity tests
     docs/
     ├── adr/0001-foundations.md
@@ -102,9 +104,12 @@ The repository contains:
     ├── adr/0009-image-preprocessing-and-vision.md
     ├── adr/0010-native-wav-and-audio-embeddings.md
     ├── adr/0011-http-api-and-jobs.md
+    ├── adr/0012-neon-simd-and-packaging.md
+    ├── adr/0013-macos-release-validation.md
     ├── api.md
     ├── architecture.md
     ├── formats.md
+    ├── release.md         # macOS 1.0 release and operations guide
     ├── storage.md
     ├── model-parity.md
     └── tokenizer.md
@@ -132,9 +137,10 @@ The repository contains:
         └── *_ref.png        # independent reference decodes
     tools/
     └── model-packer/
-        └── README.md       # role planned at the packaging milestone
+        └── README.md       # Rust std model bundle packer and verifier
     scripts/
         ├── verify.sh       # full milestone quality gate
+        ├── release_e2e.sh  # clean-environment release lifecycle harness
         ├── generate_image_goldens.py # laboratory-only image reference generator
         ├── generate_audio_goldens.py # laboratory-only audio reference generator
         └── generate_tiny_audio_fixture.py # laboratory-only tiny audio model generator
@@ -152,7 +158,11 @@ embedders that connect them to the text space. Text, image, and audio embeddings
 are implemented and validated against the official reference; text, image, and
 audio documents are stored, indexed, and searched through the CLI and the HTTP
 API. Snapshots and compaction are implemented; see ADR 0006. The HTTP API and
-jobs are implemented; see ADR 0011. HNSW and MP3 remain future work.
+jobs are implemented; see ADR 0011. The M8 release gate is documented in
+docs/release.md and ADR 0013: scripts/release_e2e.sh stages the embedded binary
+and fixtures in a sanitized environment and exercises the full CLI and loopback
+HTTP lifecycle, while the physical clean Apple Silicon Mac run and the
+notarization decision remain open. HNSW and MP3 remain future work.
 
 ## Layers and dependencies
 
@@ -662,6 +672,7 @@ directory.
     cargo tree --edges normal,build,dev
     otool -L target/aarch64-apple-darwin/release/seldon-vault-lite
     vtool -show-build target/aarch64-apple-darwin/release/seldon-vault-lite
+    scripts/release_e2e.sh --binary target/embedded-full/aarch64-apple-darwin/release/seldon-vault-lite
 
 The full-model parity test is:
 
@@ -714,8 +725,21 @@ timeouts, concurrent health requests, and graceful shutdown. Full-model text and
 image HTTP embedding tests are ignored because they load the frozen model; the
 existing text/image parity suites cover the numerical path.
 
+M8 adds tests/release_e2e.rs, a default-suite test that runs the real binary in
+a temporary directory with a cleared environment and a system-only PATH. It
+covers token-id text embedding, text and audio ingestion, lexical and vector
+search, verification, compaction, and search after the compaction restart,
+without the development model cache. The shell harness scripts/release_e2e.sh
+covers the embedded frozen model, text/image/audio embeddings, ingestion,
+lexical/vector/hybrid search, verify/compact/restart, the loopback HTTP
+lifecycle, artifact linkage, deployment target, signature, Gatekeeper
+assessment, and the zero-crate graph. A physical clean-Mac run remains a
+separate gate; the harness report records the network-isolation mode.
+
 scripts/verify.sh groups these commands and fails if the Cargo graph contains
-a dependency or if minos is not 11.0.
+a dependency or if minos is not 11.0. It records the local ad-hoc signature and
+Gatekeeper assessment; set SELDON_RELEASE_E2E=1 to run the clean-environment
+harness when the embedded release binary is present.
 
 ## Next steps
 
@@ -752,7 +776,13 @@ a dependency or if minos is not 11.0.
    byte-identical text/image/audio vectors, 18.68 s cold and 6.75 s warm
    startup, and about 2.44 GiB maximum RSS. The binary is ad-hoc linker-signed;
    local execution works, while notarized distribution remains an M8 concern.
-6. **M8/M9**: final macOS validation, then Linux port.
+6. **M8**: in progress on branch feat/m8-release-validation. ADR 0013 and
+   docs/release.md define the clean-machine gate, signing modes, and operator
+   contract. scripts/release_e2e.sh automates the clean-environment lifecycle,
+   and tests/release_e2e.rs keeps a fast release lifecycle test in the default
+   suite. The physical clean Apple Silicon Mac run and the notarization decision
+   remain open; the version stays 0.1.0 until both pass.
+7. **M9**: Linux x86-64 and ARM64 MUSL port, tests, and documentation.
 
 None of these steps may be declared complete without reproducible tests and
 without replaying the golden tests.
