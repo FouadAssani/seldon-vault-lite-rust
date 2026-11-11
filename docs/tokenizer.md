@@ -1,8 +1,8 @@
 # Tokenizer and prompts
 
 This document describes the exact text input contract implemented at milestone
-M1. ADR 0003 is the decision record; this document is the operational
-reference.
+M1 and consumed by the M2 text encoder. ADR 0003 is the decision record; this
+document is the operational reference.
 
 ## Frozen model
 
@@ -147,7 +147,7 @@ The official prompt prefixes are exposed by `model::prompt`:
 - The reduced fixture is not a general tokenizer.
 - The full-file parity test requires the development model cache.
 - The BPE loop is the scalar reference and has not been optimized.
-- No embedding or layer-output parity exists yet; inference is the next
-  milestone.
+- M2 text embeddings and layer outputs are validated against official
+  golden fixtures; image and audio inference are not implemented.
 - Image, audio, and video tokens are recognized as added tokens but their
-  modalities are not implemented at M1.
+  modalities are not implemented at M2.

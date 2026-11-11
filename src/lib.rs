@@ -26,6 +26,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// cannot diverge if the package is renamed.
 pub const PROGRAM_NAME: &str = env!("CARGO_PKG_NAME");
 
+/// Frozen model revision.
+///
+/// The value is the Hugging Face commit recorded in
+/// fixtures/model/manifest.json. It is exposed so the CLI and tests do not
+/// duplicate the revision string.
+pub const MODEL_REVISION: &str = "f9972ac22e696a105c482202646979e33e4b5a1e";
+
+/// Development model cache directory, ignored by Git.
+pub const MODEL_CACHE_DIR: &str = ".model-cache";
+
 /// Build target triple.
 ///
 /// Phase 1 only validates aarch64-apple-darwin. Other targets return

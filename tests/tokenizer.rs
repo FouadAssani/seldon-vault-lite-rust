@@ -15,6 +15,10 @@ use seldon_vault_lite::model::tokenizer::Tokenizer;
 const GOLDEN: &str = include_str!("../fixtures/tokenizer/golden.json");
 const MINI: &str = include_str!("../fixtures/tokenizer/mini_tokenizer.json");
 const MANIFEST: &str = include_str!("../fixtures/model/manifest.json");
+const TEXT_GOLDEN: &str = include_str!("../fixtures/model/text_golden.json");
+const TINY_CONFIG: &str = include_str!("../fixtures/model/tiny_text/config.json");
+const TINY_WEIGHTS: &[u8] = include_bytes!("../fixtures/model/tiny_text/model.safetensors");
+const TINY_GOLDEN: &str = include_str!("../fixtures/model/tiny_text/golden.json");
 const REVISION: &str = "f9972ac22e696a105c482202646979e33e4b5a1e";
 
 fn ids(value: &Value) -> Vec<u32> {
@@ -162,6 +166,26 @@ fn manifest_records_the_frozen_model_and_fixtures() {
             "sha256"
         ),
         sha256_hex(MINI.as_bytes())
+    );
+    assert_eq!(
+        string(
+            fixtures.get("text_golden").expect("text golden fixture"),
+            "sha256"
+        ),
+        sha256_hex(TEXT_GOLDEN.as_bytes())
+    );
+    let tiny = fixtures.get("tiny_text").expect("tiny text fixture");
+    assert_eq!(
+        string(tiny.get("config").expect("tiny config"), "sha256"),
+        sha256_hex(TINY_CONFIG.as_bytes())
+    );
+    assert_eq!(
+        string(tiny.get("weights").expect("tiny weights"), "sha256"),
+        sha256_hex(TINY_WEIGHTS)
+    );
+    assert_eq!(
+        string(tiny.get("golden").expect("tiny golden"), "sha256"),
+        sha256_hex(TINY_GOLDEN.as_bytes())
     );
 }
 

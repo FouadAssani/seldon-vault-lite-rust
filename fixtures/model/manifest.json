@@ -232,13 +232,40 @@
     "mini_tokenizer": {
       "path": "fixtures/tokenizer/mini_tokenizer.json",
       "sha256": "2f9c9e6a563da8ff9142f620a3dc4400b8a0cc8147a878abeb6bb76aced4fe3b"
+    },
+    "text_golden": {
+      "path": "fixtures/model/text_golden.json",
+      "sha256": "7bcb905b84cefcedffe14cb84ae3532cee3a2107e16a5c0ba482c2cbdc0efb98",
+      "size": 840053,
+      "schema_version": 2,
+      "provenance": "Transformers 5.22.2, PyTorch 2.15.0 CPU, float32, explicit layer loop"
+    },
+    "tiny_text": {
+      "directory": "fixtures/model/tiny_text",
+      "config": {
+        "path": "fixtures/model/tiny_text/config.json",
+        "sha256": "8aa35d31bdee5f1ff3284d3ed08b64377c1e4675a471d7f2d89ef4a89a9566f1",
+        "size": 896
+      },
+      "weights": {
+        "path": "fixtures/model/tiny_text/model.safetensors",
+        "sha256": "2daec622d6d3be44a339158678939f9b739a3b21c8be1dce8f6f7c38fb90caa6",
+        "size": 47500
+      },
+      "golden": {
+        "path": "fixtures/model/tiny_text/golden.json",
+        "sha256": "28a3800304ac2d0ee765df72f6f681952b9dce5e1086eb12d7005df28421bf94",
+        "size": 9665
+      }
     }
   },
   "notes": [
     "Model files are development assets and are not committed to Git.",
-    "model.safetensors SHA-256 is the Hugging Face LFS object id; the file was not downloaded.",
+    "model.safetensors SHA-256 is the Hugging Face LFS object id; the file is not committed.",
     "Tokenization parity was verified against tokenizers 0.23.3 on the golden corpus.",
     "mini_tokenizer.json is a reduced fixture that reproduces the full tokenizer on the golden corpus; it is not a general tokenizer.",
-    "No inference is claimed at M1."
+    "M2 text fixtures were generated with Transformers 5.22.2 and PyTorch 2.15.0 CPU in float32.",
+    "The tiny_text fixture is a complete 3-layer official-code model with 10,315 parameters; it is not a reduced real checkpoint.",
+    "M2 claims text embeddings only. Image, video, and audio are not implemented."
   ]
 }
