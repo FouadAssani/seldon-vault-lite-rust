@@ -2,8 +2,8 @@
 //!
 //! All product errors converge here so that the CLI, then the HTTP API, can
 //! choose an exit code or status without inspecting ad hoc errors. The
-//! corrupted-input and limit-exceeded variants will be added with the
-//! milestone M1 parsers.
+//! variants distinguish a user error, corrupted input, an exceeded limit, an
+//! unsupported feature, and an internal invariant violation.
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -14,9 +14,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Central product error.
 ///
-/// The variants distinguish a usage error (exit code 2) from an execution
-/// error (exit code 1). The taxonomy will be extended with corrupted-input
-/// and limit-exceeded errors when the corresponding parsers exist.
+/// The taxonomy is deliberately small and stable. Parsers return
+/// Error::Corrupt for malformed input, Error::LimitExceeded when a
+/// documented cap is reached, and Error::Unsupported for a valid but
+/// unimplemented format or feature. Error::Internal signals a violated
+/// invariant in product code, never hostile input.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -24,6 +26,14 @@ pub enum Error {
     Usage(String),
     /// Input/output failure.
     Io(io::Error),
+    /// Malformed or truncated external input.
+    Corrupt(String),
+    /// A documented resource or format limit was exceeded.
+    LimitExceeded(String),
+    /// A valid but unsupported format, dtype, or feature.
+    Unsupported(String),
+    /// An internal invariant was violated; this is a product bug.
+    Internal(String),
 }
 
 impl Error {
@@ -32,14 +42,38 @@ impl Error {
         Self::Usage(message.into())
     }
 
+    /// Builds a corrupted-input error.
+    pub fn corrupt(message: impl Into<String>) -> Self {
+        Self::Corrupt(message.into())
+    }
+
+    /// Builds a limit-exceeded error.
+    pub fn limit_exceeded(message: impl Into<String>) -> Self {
+        Self::LimitExceeded(message.into())
+    }
+
+    /// Builds an unsupported-feature error.
+    pub fn unsupported(message: impl Into<String>) -> Self {
+        Self::Unsupported(message.into())
+    }
+
+    /// Builds an internal-invariant error.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
+
     /// Process exit code associated with this error.
     ///
-    /// `0` is reserved for success, `1` for execution errors, and `2` for
+    /// 0 is reserved for success, 1 for execution errors, and 2 for
     /// usage errors.
     pub fn exit_code(&self) -> u8 {
         match self {
             Self::Usage(_) => 2,
-            Self::Io(_) => 1,
+            Self::Io(_)
+            | Self::Corrupt(_)
+            | Self::LimitExceeded(_)
+            | Self::Unsupported(_)
+            | Self::Internal(_) => 1,
         }
     }
 
@@ -57,6 +91,10 @@ impl fmt::Display for Error {
         match self {
             Self::Usage(message) => formatter.write_str(message),
             Self::Io(error) => write!(formatter, "{error}"),
+            Self::Corrupt(message) => write!(formatter, "corrupt input: {message}"),
+            Self::LimitExceeded(message) => write!(formatter, "limit exceeded: {message}"),
+            Self::Unsupported(message) => write!(formatter, "unsupported: {message}"),
+            Self::Internal(message) => write!(formatter, "internal error: {message}"),
         }
     }
 }
@@ -64,8 +102,12 @@ impl fmt::Display for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            Self::Usage(_) => None,
             Self::Io(error) => Some(error),
+            Self::Usage(_)
+            | Self::Corrupt(_)
+            | Self::LimitExceeded(_)
+            | Self::Unsupported(_)
+            | Self::Internal(_) => None,
         }
     }
 }
@@ -100,6 +142,40 @@ mod tests {
                 .expect("an I/O error must expose its source")
                 .to_string(),
             "failure"
+        );
+    }
+
+    #[test]
+    fn execution_errors_exit_with_code_one() {
+        for error in [
+            Error::corrupt("truncated"),
+            Error::limit_exceeded("too large"),
+            Error::unsupported("F16"),
+            Error::internal("broken invariant"),
+        ] {
+            assert_eq!(error.exit_code(), 1);
+            assert!(!error.is_broken_pipe());
+            assert!(StdError::source(&error).is_none());
+        }
+    }
+
+    #[test]
+    fn corrupt_and_limit_messages_are_prefixed() {
+        assert_eq!(
+            Error::corrupt("bad offset").to_string(),
+            "corrupt input: bad offset"
+        );
+        assert_eq!(
+            Error::limit_exceeded("too many tensors").to_string(),
+            "limit exceeded: too many tensors"
+        );
+        assert_eq!(
+            Error::unsupported("F16 activations").to_string(),
+            "unsupported: F16 activations"
+        );
+        assert_eq!(
+            Error::internal("shape mismatch").to_string(),
+            "internal error: shape mismatch"
         );
     }
 
